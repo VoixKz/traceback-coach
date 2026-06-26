@@ -79,3 +79,73 @@ def parse_traceback(exc_type, exc_value, exc_tb, cell_source: str = "") -> Parse
 
     token = _extract_token(error_type, message)
     return ParsedError(error_type, message, line_no, source_line, token, frames)
+
+
+def _fill(template: str, parsed: ParsedError) -> str:
+    """Fill the placeholders used in knowledge templates."""
+    return (
+        template.replace("{token}", parsed.token or "this name")
+        .replace("{message}", parsed.message)
+        .replace("{error_type}", parsed.error_type)
+        .replace("{line_no}", str(parsed.line_no) if parsed.line_no else "?")
+    )
+
+
+def _mm_escape(text: str) -> str:
+    """Make text safe inside a Mermaid "..." node label."""
+    return text.replace('"', "'").replace("\n", " ").strip()
+
+
+def build_mermaid(parsed: ParsedError, family: ErrorFamily) -> str:
+    """Build a Mermaid `graph TD` showing the causal chain to the break."""
+    cause = _fill(family.cause_phrase, parsed)
+    line_label = f"line {parsed.line_no}" if parsed.line_no else "your code"
+    src = _mm_escape(parsed.source_line) or "the failing line"
+
+    nodes = ['  S["your code runs"]']
+    edges: List[str] = []
+    prev = "S"
+
+    chain = parsed.frames[:-1] if len(parsed.frames) > 1 else []
+    for i, fr in enumerate(chain):
+        nid = f"F{i}"
+        label = _mm_escape(fr.location)
+        if fr.line_no:
+            label = f"{label} (line {fr.line_no})"
+        nodes.append(f'  {nid}["{label}"]')
+        edges.append(f"  {prev} --> {nid}")
+        prev = nid
+
+    nodes.append(f'  L["{line_label}: {src}"]')
+    edges.append(f"  {prev} --> L")
+    nodes.append(f'  X["💥 {parsed.error_type}<br/>{_mm_escape(cause)}"]')
+    edges.append("  L -->|breaks| X")
+
+    return (
+        "graph TD\n"
+        + "\n".join(nodes + edges)
+        + "\n  style X fill:#fee2e2,stroke:#ef4444,color:#991b1b"
+    )
+
+
+def build_fallback_diagram(parsed: ParsedError, family: ErrorFamily) -> str:
+    """Pure HTML/CSS boxes-and-arrows fallback when Mermaid can't render."""
+    cause = _fill(family.cause_phrase, parsed)
+    line_label = f"line {parsed.line_no}" if parsed.line_no else "your code"
+    src = parsed.source_line.strip() or "the failing line"
+    box = (
+        "display:inline-block;padding:6px 10px;margin:4px;border-radius:6px;"
+        "border:1px solid #cbd5e1;background:#f8fafc;font-family:monospace;font-size:13px"
+    )
+    break_box = (
+        "display:inline-block;padding:6px 10px;margin:4px;border-radius:6px;"
+        "border:1px solid #ef4444;background:#fee2e2;color:#991b1b;font-size:13px"
+    )
+    arrow = "<span style='margin:0 6px;color:#64748b'>&rarr;</span>"
+    return (
+        "<div style='margin:8px 0'>"
+        f"<span style='{box}'>your code runs</span>{arrow}"
+        f"<span style='{box}'>{line_label}: {_html.escape(src)}</span>{arrow}"
+        f"<span style='{break_box}'>💥 {parsed.error_type}: {_html.escape(cause)}</span>"
+        "</div>"
+    )
