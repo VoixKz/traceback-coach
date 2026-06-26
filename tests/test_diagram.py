@@ -45,3 +45,18 @@ def test_fallback_is_html_with_boxes_and_arrow():
     out = build_fallback_diagram(p, lookup("NameError"))
     assert "<div" in out and "&rarr;" in out
     assert "NameError" in out
+
+
+def test_flat_cell_has_no_foreign_frame_nodes():
+    # A flat cell (no user functions) must not leak the harness/exec frame
+    # into the diagram as an intermediate "F0" node.
+    import sys
+    from traceback_coach._core import parse_traceback
+
+    src = "xs = [1, 2, 3]\nprint(xs[5])\n"
+    try:
+        exec(compile(src, "<cell>", "exec"), {})
+    except BaseException:
+        p = parse_traceback(*sys.exc_info(), cell_source=src)
+    body = build_mermaid(p, lookup("IndexError"))
+    assert "F0[" not in body

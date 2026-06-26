@@ -67,15 +67,25 @@ def parse_traceback(exc_type, exc_value, exc_tb, cell_source: str = "") -> Parse
             source_line = src_lines[line_no - 1]
         frames.append(Frame("<cell>", line_no, source_line))
     else:
+        raw_frames: List[Frame] = []
         for fs in _tb.extract_tb(exc_tb):
             location = "<cell>" if fs.name == "<module>" else fs.name
-            frames.append(Frame(location, fs.lineno, fs.line or ""))
-        if frames:
-            last = frames[-1]
+            raw_frames.append(Frame(location, fs.lineno, fs.line or ""))
+        if raw_frames:
+            last = raw_frames[-1]
             line_no = last.line_no
             source_line = last.source_line
             if not source_line and line_no and 0 < line_no <= len(src_lines):
                 source_line = src_lines[line_no - 1]
+        # Keep only frames that belong to the student's cell — drop harness /
+        # IPython-internal frames so the diagram shows the student's code only.
+        cell_set = {ln.strip() for ln in src_lines if ln.strip()}
+        if cell_set:
+            frames = [f for f in raw_frames if (f.source_line or "").strip() in cell_set]
+        else:
+            frames = list(raw_frames)
+        if not frames and raw_frames:
+            frames = [raw_frames[-1]]
 
     token = _extract_token(error_type, message)
     return ParsedError(error_type, message, line_no, source_line, token, frames)
