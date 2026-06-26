@@ -231,3 +231,110 @@ def make_question(parsed: ParsedError, family: ErrorFamily,
     if question:
         return question.strip()
     return _fill(family.question_template, parsed)
+
+
+import importlib.resources as _resources
+
+
+@dataclass
+class CardData:
+    error_type: str
+    translation: str
+    mermaid_src: str
+    fallback_html: str
+    line_no: Optional[int]
+    source_line: str
+    token: str
+    family_summary: str
+    read_it_yourself: str
+    example_code: str
+    example_explanation: str
+    example_avoid: str
+    question: str
+
+
+def build_card(parsed: ParsedError, cell_source: str = "", llm=None) -> CardData:
+    family = lookup(parsed.error_type)
+    return CardData(
+        error_type=parsed.error_type,
+        translation=_fill(family.translation, parsed),
+        mermaid_src=build_mermaid(parsed, family),
+        fallback_html=build_fallback_diagram(parsed, family),
+        line_no=parsed.line_no,
+        source_line=parsed.source_line,
+        token=parsed.token,
+        family_summary=family.family_summary,
+        read_it_yourself=family.read_it_yourself,
+        example_code=family.example_code,
+        example_explanation=family.example_explanation,
+        example_avoid=family.example_avoid,
+        question=make_question(parsed, family, cell_source, llm),
+    )
+
+
+def lesson_card(family: ErrorFamily) -> CardData:
+    """Build a CardData for proactive %coach_lesson (no live error)."""
+    synthetic = ParsedError(
+        error_type=family.key,
+        message="(example)",
+        line_no=None,
+        source_line=family.example_code.split("\n")[0],
+        token="",
+        frames=[],
+    )
+    return build_card(synthetic, family.example_code, llm=lambda p, s: "")
+
+
+def load_mermaid_js() -> str:
+    """Return the vendored Mermaid runtime text, or '' if not packaged."""
+    try:
+        asset = _resources.files("traceback_coach") / "static" / "mermaid.min.js"
+        return asset.read_text(encoding="utf-8")
+    except Exception:
+        return ""
+
+
+def render_card_html(card: CardData, diagram_id: str = "tbc-diagram") -> str:
+    """Render the full error-anatomy card as an HTML string.
+
+    The Mermaid runtime is injected once elsewhere (magics.inject_mermaid_runtime).
+    Each card emits its diagram node + a guarded script that runs Mermaid on it,
+    falling back to the CSS diagram if the runtime is missing or errors.
+    """
+    esc = _html.escape
+    where = (
+        f"line {card.line_no} &rarr; <code>{esc(card.source_line.strip())}</code>"
+        if card.line_no
+        else "<code>the failing line</code>"
+    )
+    run_script = (
+        "<script>(function(){var el=document.getElementById('%(id)s');"
+        "if(!el)return;try{if(window.mermaid){window.mermaid.run({nodes:[el]});}"
+        "else{throw 0;}}catch(e){el.style.display='none';"
+        "var f=el.parentNode.querySelector('.tbc-fallback');"
+        "if(f)f.style.display='block';}})();</script>"
+    ) % {"id": diagram_id}
+
+    return (
+        "<div style=\"border:1px solid #e2e8f0;border-left:4px solid #6366f1;"
+        "border-radius:6px;padding:12px 16px;margin:8px 0;font-size:14px;"
+        "line-height:1.55\">"
+        "<div style=\"font-weight:600;color:#4338ca\">🧭 Coach</div>"
+        f"<div style=\"margin-top:6px\">🔴 <strong>What happened:</strong> {esc(card.translation)}</div>"
+        "<div style=\"margin-top:8px\">📊 <strong>Why it breaks:</strong></div>"
+        f"<pre class=\"mermaid\" id=\"{diagram_id}\" style=\"background:transparent;border:0\">{esc(card.mermaid_src)}</pre>"
+        f"<div class=\"tbc-fallback\" style=\"display:none\">{card.fallback_html}</div>"
+        f"{run_script}"
+        f"<div style=\"margin-top:6px\">📍 <strong>Where:</strong> {where}</div>"
+        f"<div style=\"margin-top:6px\">🏷️ <strong>{esc(card.error_type)}:</strong> {esc(card.family_summary)}</div>"
+        f"<div style=\"margin-top:6px;color:#475569\">🔎 <strong>Read it yourself:</strong> {esc(card.read_it_yourself)}</div>"
+        "<details style=\"margin-top:8px\">"
+        "<summary style=\"cursor:pointer\">📖 See this error on a small example</summary>"
+        f"<pre style=\"background:#f1f5f9;padding:8px;border-radius:4px;overflow:auto\"><code>{esc(card.example_code)}</code></pre>"
+        f"<div>{esc(card.example_explanation)}</div>"
+        f"<div style=\"margin-top:4px;color:#475569\"><strong>Avoid it next time:</strong> {esc(card.example_avoid)}</div>"
+        "</details>"
+        f"<div style=\"margin-top:10px;background:#eef2ff;border-radius:4px;padding:8px 10px\">"
+        f"❓ <strong>Question:</strong> {esc(card.question)}</div>"
+        "</div>"
+    )
