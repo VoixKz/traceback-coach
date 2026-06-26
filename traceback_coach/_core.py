@@ -149,3 +149,85 @@ def build_fallback_diagram(parsed: ParsedError, family: ErrorFamily) -> str:
         f"<span style='{break_box}'>💥 {parsed.error_type}: {_html.escape(cause)}</span>"
         "</div>"
     )
+
+
+import json as _json
+import os as _os
+import urllib.request as _req
+
+
+def llm_question(parsed: ParsedError, cell_source: str) -> str:
+    """One short Socratic question from an OpenAI-compatible API.
+
+    Returns "" when no API key is set or on any failure — the caller then
+    uses the deterministic template. Honours DIVE's LiteLLM gateway via
+    OPENAI_BASE_URL. NEVER asks the model for a fix (system prompt forbids it).
+    """
+    api_key = (
+        _os.environ.get("TRACEBACK_COACH_LLM_API_KEY")
+        or _os.environ.get("DEEPSEEK_API_KEY")
+        or _os.environ.get("OPENAI_API_KEY")
+        or ""
+    )
+    if not api_key:
+        return ""
+    base_url = (
+        _os.environ.get("TRACEBACK_COACH_LLM_BASE_URL")
+        or _os.environ.get("OPENAI_BASE_URL")
+        or "https://api.deepseek.com"
+    )
+    model = (
+        _os.environ.get("TRACEBACK_COACH_LLM_MODEL")
+        or _os.environ.get("OPENAI_MODEL")
+        or "deepseek-chat"
+    )
+    timeout = int(_os.environ.get("TRACEBACK_COACH_LLM_TIMEOUT", "20"))
+    system = (
+        "You are a debugging coach for a beginner programmer. Ask EXACTLY ONE "
+        "short guiding question that helps them find the bug themselves. Refer to "
+        "something specific in their code. NEVER give the fix or any corrected "
+        "code. Output only the question."
+    )
+    user = (
+        f"Error: {parsed.error_type}: {parsed.message}\n"
+        f"Failing line {parsed.line_no}: {parsed.source_line}\n\n"
+        f"Their code:\n{cell_source}"
+    )
+    try:
+        body = _json.dumps({
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "max_tokens": 80,
+            "temperature": 0.5,
+        }).encode()
+        request = _req.Request(
+            f"{base_url.rstrip('/')}/chat/completions",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+            method="POST",
+        )
+        with _req.urlopen(request, timeout=timeout) as resp:
+            data = _json.loads(resp.read())
+        text = data["choices"][0]["message"]["content"].strip()
+        return text.split("\n")[0].strip().strip('"').strip()
+    except Exception:
+        return ""
+
+
+def make_question(parsed: ParsedError, family: ErrorFamily,
+                  cell_source: str = "", llm=None) -> str:
+    """LLM question if available, else the deterministic template."""
+    fn = llm if llm is not None else llm_question
+    try:
+        question = fn(parsed, cell_source)
+    except Exception:
+        question = ""
+    if question:
+        return question.strip()
+    return _fill(family.question_template, parsed)
