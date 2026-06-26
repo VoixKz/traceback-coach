@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "traceback-coach"
+version = "0.1.0"
+description = "A visual error-literacy coach for Jupyter: explains tracebacks with diagrams and worked examples so students learn to read errors themselves"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE*"]
+authors = [{ name = "DIVE / CS1302 contributor" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Jupyter",
+    "Framework :: Jupyter :: JupyterLab",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Education",
+    "Topic :: Education :: Computer Aided Instruction (CAI)",
+]
+keywords = ["jupyter", "traceback", "error", "education", "teaching", "debugging", "mentor"]
+dependencies = ["ipython>=8.0.0"]
+
+[project.optional-dependencies]
+dev = ["pytest", "jupyterlab"]
+
+[project.urls]
+Homepage = "https://github.com/dive4dec/jupyter-hermes-personalities"
+"Source Code" = "https://github.com/dive4dec/jupyter-hermes-personalities"
+
+[tool.hatch.build.targets.wheel]
+packages = ["traceback_coach"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"traceback_coach/static/mermaid.min.js" = "traceback_coach/static/mermaid.min.js"
