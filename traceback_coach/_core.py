@@ -18,6 +18,7 @@ class Frame:
     location: str
     line_no: Optional[int]
     source_line: str
+    filename: str = ""
 
 
 @dataclass
@@ -60,32 +61,38 @@ def parse_traceback(exc_type, exc_value, exc_tb, cell_source: str = "") -> Parse
     line_no: Optional[int] = None
     source_line = ""
 
+    def _cell_line(n):
+        return src_lines[n - 1] if n and 0 < n <= len(src_lines) else ""
+
     if isinstance(exc_value, SyntaxError) and exc_value.lineno:
         line_no = exc_value.lineno
-        source_line = (exc_value.text or "").rstrip("\n")
-        if not source_line and 0 < line_no <= len(src_lines):
-            source_line = src_lines[line_no - 1]
-        frames.append(Frame("<cell>", line_no, source_line))
+        source_line = (exc_value.text or "").rstrip("\n") or _cell_line(line_no)
+        frames.append(Frame("your cell", line_no, source_line))
     else:
         raw_frames: List[Frame] = []
         for fs in _tb.extract_tb(exc_tb):
-            location = "<cell>" if fs.name == "<module>" else fs.name
-            raw_frames.append(Frame(location, fs.lineno, fs.line or ""))
+            location = "your cell" if fs.name == "<module>" else fs.name
+            raw_frames.append(Frame(location, fs.lineno, fs.line or "", fs.filename or ""))
+
+        # The break (deepest) frame is in the student's cell. Keep every frame
+        # from that SAME file — that's the student's call chain — and drop
+        # harness / IPython-internal frames. Filtering by filename (not source
+        # text) is robust even when linecache has no source for the frame.
         if raw_frames:
-            last = raw_frames[-1]
-            line_no = last.line_no
-            source_line = last.source_line
-            if not source_line and line_no and 0 < line_no <= len(src_lines):
-                source_line = src_lines[line_no - 1]
-        # Keep only frames that belong to the student's cell — drop harness /
-        # IPython-internal frames so the diagram shows the student's code only.
-        cell_set = {ln.strip() for ln in src_lines if ln.strip()}
-        if cell_set:
-            frames = [f for f in raw_frames if (f.source_line or "").strip() in cell_set]
+            cell_file = raw_frames[-1].filename
+            frames = [f for f in raw_frames if f.filename == cell_file] or [raw_frames[-1]]
         else:
-            frames = list(raw_frames)
-        if not frames and raw_frames:
-            frames = [raw_frames[-1]]
+            frames = []
+
+        # Fill any missing source lines from the cell text (linecache may be
+        # empty for %%coach's nested run) so each node can show its code.
+        for f in frames:
+            if not f.source_line:
+                f.source_line = _cell_line(f.line_no)
+
+        if frames:
+            line_no = frames[-1].line_no
+            source_line = frames[-1].source_line or _cell_line(line_no)
 
     token = _extract_token(error_type, message)
     return ParsedError(error_type, message, line_no, source_line, token, frames)
@@ -103,19 +110,23 @@ def _fill(template: str, parsed: ParsedError) -> str:
 
 def _mm_escape(text: str) -> str:
     """Make text safe inside a Mermaid "..." node label."""
-    return text.replace('"', "'").replace("\n", " ").strip()
+    return (
+        text.replace('"', "'").replace("<", "(").replace(">", ")")
+        .replace("\n", " ").strip()
+    )
 
 
 _MAX_CHAIN_NODES = 6
 
 
-def _chain_nodes(chain: List[Frame]):
-    """Turn a list of call frames into (node_id, label) pairs for the diagram.
+def _chain_steps(chain: List[Frame]):
+    """Reduce a call chain to a short list of (head, code) display steps.
 
-    Consecutive identical frames are collapsed into one node annotated with a
-    repeat count (`f (line 2) x998`) — exactly what direct recursion produces.
-    If the result is still long (e.g. mutual recursion), keep the first 3 and
-    last 2 and insert one "... N more calls ..." ellipsis node.
+    Consecutive identical frames collapse into one step annotated with a repeat
+    count (`f (line 2) x998`) — exactly what direct recursion produces. If the
+    chain is still long (e.g. mutual recursion), keep the first 3 and last 2 and
+    insert one ("... N more calls ...", "") ellipsis step. `head` is the
+    function + line; `code` is that call's own source line (may be "").
     """
     # 1. Collapse consecutive identical frames into (frame, count).
     collapsed = []
@@ -127,30 +138,40 @@ def _chain_nodes(chain: List[Frame]):
         else:
             collapsed.append((fr, 1))
 
-    # 2. Cap the number of displayed nodes with an ellipsis in the middle.
-    ellipsis_hidden = 0
+    # 2. Cap the number of displayed steps with an ellipsis in the middle.
     if len(collapsed) > _MAX_CHAIN_NODES:
-        head, tail = collapsed[:3], collapsed[-2:]
-        ellipsis_hidden = len(collapsed) - len(head) - len(tail)
-        display_items = head + [None] + tail
+        head_items, tail = collapsed[:3], collapsed[-2:]
+        hidden = len(collapsed) - len(head_items) - len(tail)
+        items = head_items + [None] + tail
     else:
-        display_items = list(collapsed)
+        items = list(collapsed)
+        hidden = 0
 
-    # 3. Emit (node_id, label) pairs.
-    out = []
-    idx = 0
-    for item in display_items:
+    # 3. Emit (head, code) steps.
+    steps = []
+    for item in items:
         if item is None:
-            out.append(("FELL", f"... {ellipsis_hidden} more calls ..."))
+            steps.append((f"... {hidden} more calls ...", ""))
             continue
         fr, count = item
-        label = _mm_escape(fr.location)
+        head = fr.location
         if fr.line_no:
-            label += f" (line {fr.line_no})"
+            head += f" (line {fr.line_no})"
         if count > 1:
-            label += f" x{count}"
-        out.append((f"F{idx}", label))
-        idx += 1
+            head += f" x{count}"
+        code = (fr.source_line or "").strip()
+        if len(code) > 60:
+            code = code[:57] + "..."
+        steps.append((head, code))
+    return steps
+
+
+def _chain_nodes(chain: List[Frame]):
+    """(node_id, mermaid_label) pairs for the call chain — code shown per node."""
+    out = []
+    for idx, (head, code) in enumerate(_chain_steps(chain)):
+        h, c = _mm_escape(head), _mm_escape(code)
+        out.append((f"F{idx}", f"{h}<br/>{c}" if c else h))
     return out
 
 
@@ -183,26 +204,49 @@ def build_mermaid(parsed: ParsedError, family: ErrorFamily) -> str:
 
 
 def build_fallback_diagram(parsed: ParsedError, family: ErrorFamily) -> str:
-    """Pure HTML/CSS boxes-and-arrows fallback when Mermaid can't render."""
+    """Pure HTML/CSS flow fallback when Mermaid can't render.
+
+    Renders the full call chain top-to-bottom — each call with its own code
+    line — down to the line that broke, so the student sees where the bad value
+    started and how it flowed to the break.
+    """
+    esc = _html.escape
     cause = _fill(family.cause_phrase, parsed)
     line_label = f"line {parsed.line_no}" if parsed.line_no else "your code"
     src = parsed.source_line.strip() or "the failing line"
+
     box = (
-        "display:inline-block;padding:6px 10px;margin:4px;border-radius:6px;"
-        "border:1px solid #cbd5e1;background:#f8fafc;font-family:monospace;font-size:13px"
+        "padding:6px 10px;margin:2px 0;border-radius:6px;border:1px solid #cbd5e1;"
+        "background:#f8fafc;font-size:13px"
     )
     break_box = (
-        "display:inline-block;padding:6px 10px;margin:4px;border-radius:6px;"
-        "border:1px solid #ef4444;background:#fee2e2;color:#991b1b;font-size:13px"
+        "padding:6px 10px;margin:2px 0;border-radius:6px;border:1px solid #ef4444;"
+        "background:#fee2e2;color:#991b1b;font-size:13px"
     )
-    arrow = "<span style='margin:0 6px;color:#64748b'>&rarr;</span>"
-    return (
-        "<div style='margin:8px 0'>"
-        f"<span style='{box}'>your code runs</span>{arrow}"
-        f"<span style='{box}'>{line_label}: {_html.escape(src)}</span>{arrow}"
-        f"<span style='{break_box}'>💥 {parsed.error_type}: {_html.escape(cause)}</span>"
-        "</div>"
+    code_style = "font-family:monospace;color:#0f172a"
+    down = "<div style='color:#94a3b8;margin:0 0 0 10px'>&darr;</div>"
+
+    rows = ["<div style='margin:8px 0'>",
+            f"<div style='{box}'>your code runs</div>", down]
+
+    chain = parsed.frames[:-1] if len(parsed.frames) > 1 else []
+    for head, code in _chain_steps(chain):
+        inner = f"<strong>{esc(head)}</strong>"
+        if code:
+            inner += f"<br/><span style='{code_style}'>{esc(code)}</span>"
+        rows.append(f"<div style='{box}'>{inner}</div>")
+        rows.append(down)
+
+    rows.append(
+        f"<div style='{box}'><strong>{esc(line_label)}</strong>"
+        f"<br/><span style='{code_style}'>{esc(src)}</span></div>"
     )
+    rows.append(down)
+    rows.append(
+        f"<div style='{break_box}'>💥 <strong>{esc(parsed.error_type)}</strong>: {esc(cause)}</div>"
+    )
+    rows.append("</div>")
+    return "".join(rows)
 
 
 import json as _json

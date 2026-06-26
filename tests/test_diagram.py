@@ -43,8 +43,32 @@ def test_mermaid_escapes_double_quotes():
 def test_fallback_is_html_with_boxes_and_arrow():
     p = _name_error()
     out = build_fallback_diagram(p, lookup("NameError"))
-    assert "<div" in out and "&rarr;" in out
+    assert "<div" in out and "&darr;" in out
     assert "NameError" in out
+
+
+def test_fallback_shows_full_call_chain():
+    frames = [
+        Frame("run", 14, "return average_of(scores, [0, 1, 5])"),
+        Frame("average_of", 8, "total += get_item(data, i)"),
+        Frame("get_item", 2, "return data[i]"),  # break
+    ]
+    p = ParsedError("IndexError", "list index out of range", 2,
+                    "return data[i]", "", frames)
+    out = build_fallback_diagram(p, lookup("IndexError"))
+    assert "run" in out and "average_of" in out and "get_item" in out
+    assert "average_of(scores, [0, 1, 5])" in out  # the call that passed index 5
+
+
+def test_mermaid_chain_nodes_include_code():
+    frames = [
+        Frame("run", 14, "return average_of(scores, [0, 1, 5])"),
+        Frame("get_item", 2, "return data[i]"),  # break
+    ]
+    p = ParsedError("IndexError", "list index out of range", 2,
+                    "return data[i]", "", frames)
+    body = build_mermaid(p, lookup("IndexError"))
+    assert "average_of(scores, [0, 1, 5])" in body  # code shown on the chain node
 
 
 def test_deep_recursion_chain_is_collapsed():
