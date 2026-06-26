@@ -317,12 +317,15 @@ def render_card_html(card: CardData, diagram_id: str = "tbc-diagram") -> str:
         if card.line_no
         else "<code>the failing line</code>"
     )
+    # The CSS fallback is shown by default; if the Mermaid runtime is present
+    # and scripts execute (trusted notebook), we reveal+render the diagram and
+    # hide the fallback. If scripts are stripped, the fallback simply stays.
     run_script = (
         "<script>(function(){var el=document.getElementById('%(id)s');"
-        "if(!el)return;try{if(window.mermaid){window.mermaid.run({nodes:[el]});}"
-        "else{throw 0;}}catch(e){el.style.display='none';"
+        "if(!el)return;try{if(window.mermaid){"
+        "el.style.display='block';window.mermaid.run({nodes:[el]});"
         "var f=el.parentNode.querySelector('.tbc-fallback');"
-        "if(f)f.style.display='block';}})();</script>"
+        "if(f)f.style.display='none';}}catch(e){}})();</script>"
     ) % {"id": diagram_id}
 
     return (
@@ -332,8 +335,8 @@ def render_card_html(card: CardData, diagram_id: str = "tbc-diagram") -> str:
         "<div style=\"font-weight:600;color:#4338ca\">🧭 Coach</div>"
         f"<div style=\"margin-top:6px\">🔴 <strong>What happened:</strong> {esc(card.translation)}</div>"
         "<div style=\"margin-top:8px\">📊 <strong>Why it breaks:</strong></div>"
-        f"<pre class=\"mermaid\" id=\"{diagram_id}\" style=\"background:transparent;border:0\">{esc(card.mermaid_src)}</pre>"
-        f"<div class=\"tbc-fallback\" style=\"display:none\">{card.fallback_html}</div>"
+        f"<pre class=\"mermaid\" id=\"{diagram_id}\" style=\"display:none;background:transparent;border:0\">{esc(card.mermaid_src)}</pre>"
+        f"<div class=\"tbc-fallback\" style=\"display:block\">{card.fallback_html}</div>"
         f"{run_script}"
         f"<div style=\"margin-top:6px\">📍 <strong>Where:</strong> {where}</div>"
         f"<div style=\"margin-top:6px\">🏷️ <strong>{esc(card.error_type)}:</strong> {esc(card.family_summary)}</div>"
