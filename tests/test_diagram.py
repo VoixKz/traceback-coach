@@ -47,6 +47,47 @@ def test_fallback_is_html_with_boxes_and_arrow():
     assert "NameError" in out
 
 
+def test_deep_recursion_chain_is_collapsed():
+    # Direct recursion: many consecutive identical frames -> one node "xN".
+    frames = [Frame("f", 2, "return f(n - 1)") for _ in range(50)]
+    frames.append(Frame("f", 2, "return f(n - 1)"))  # the break frame
+    p = ParsedError("RecursionError", "maximum recursion depth exceeded", 2,
+                    "return f(n - 1)", "", frames)
+    body = build_mermaid(p, lookup("RecursionError"))
+    assert "x49" in body or "x50" in body          # collapsed with a count
+    assert body.count('["') < 8                    # node count stays small
+
+
+def test_mutual_recursion_chain_is_capped():
+    # Alternating frames don't collapse -> must be capped with an ellipsis.
+    frames = []
+    for i in range(40):
+        if i % 2 == 0:
+            frames.append(Frame("is_even", 2, "return is_odd(n - 1)"))
+        else:
+            frames.append(Frame("is_odd", 2, "return is_even(n - 1)"))
+    frames.append(Frame("is_even", 2, "return is_odd(n - 1)"))  # break
+    p = ParsedError("RecursionError", "maximum recursion depth exceeded", 2,
+                    "return is_odd(n - 1)", "", frames)
+    body = build_mermaid(p, lookup("RecursionError"))
+    assert "more calls" in body
+    # bounded regardless of 40 input frames: S + (3 + ellipsis + 2) + L + X = 9
+    assert body.count('["') <= 9
+
+
+def test_nested_call_chain_shows_each_function():
+    # A short chain of distinct frames is shown in full.
+    frames = [
+        Frame("run", 14, "return average_of(scores, [0, 1, 5])"),
+        Frame("average_of", 8, "total += get_item(data, i)"),
+        Frame("get_item", 2, "return data[i]"),  # break
+    ]
+    p = ParsedError("IndexError", "list index out of range", 2,
+                    "return data[i]", "", frames)
+    body = build_mermaid(p, lookup("IndexError"))
+    assert "run" in body and "average_of" in body
+
+
 def test_flat_cell_has_no_foreign_frame_nodes():
     # A flat cell (no user functions) must not leak the harness/exec frame
     # into the diagram as an intermediate "F0" node.

@@ -106,6 +106,54 @@ def _mm_escape(text: str) -> str:
     return text.replace('"', "'").replace("\n", " ").strip()
 
 
+_MAX_CHAIN_NODES = 6
+
+
+def _chain_nodes(chain: List[Frame]):
+    """Turn a list of call frames into (node_id, label) pairs for the diagram.
+
+    Consecutive identical frames are collapsed into one node annotated with a
+    repeat count (`f (line 2) x998`) — exactly what direct recursion produces.
+    If the result is still long (e.g. mutual recursion), keep the first 3 and
+    last 2 and insert one "... N more calls ..." ellipsis node.
+    """
+    # 1. Collapse consecutive identical frames into (frame, count).
+    collapsed = []
+    for fr in chain:
+        if collapsed and collapsed[-1][0].location == fr.location \
+                and collapsed[-1][0].line_no == fr.line_no:
+            prev_fr, count = collapsed[-1]
+            collapsed[-1] = (prev_fr, count + 1)
+        else:
+            collapsed.append((fr, 1))
+
+    # 2. Cap the number of displayed nodes with an ellipsis in the middle.
+    ellipsis_hidden = 0
+    if len(collapsed) > _MAX_CHAIN_NODES:
+        head, tail = collapsed[:3], collapsed[-2:]
+        ellipsis_hidden = len(collapsed) - len(head) - len(tail)
+        display_items = head + [None] + tail
+    else:
+        display_items = list(collapsed)
+
+    # 3. Emit (node_id, label) pairs.
+    out = []
+    idx = 0
+    for item in display_items:
+        if item is None:
+            out.append(("FELL", f"... {ellipsis_hidden} more calls ..."))
+            continue
+        fr, count = item
+        label = _mm_escape(fr.location)
+        if fr.line_no:
+            label += f" (line {fr.line_no})"
+        if count > 1:
+            label += f" x{count}"
+        out.append((f"F{idx}", label))
+        idx += 1
+    return out
+
+
 def build_mermaid(parsed: ParsedError, family: ErrorFamily) -> str:
     """Build a Mermaid `graph TD` showing the causal chain to the break."""
     cause = _fill(family.cause_phrase, parsed)
@@ -117,11 +165,7 @@ def build_mermaid(parsed: ParsedError, family: ErrorFamily) -> str:
     prev = "S"
 
     chain = parsed.frames[:-1] if len(parsed.frames) > 1 else []
-    for i, fr in enumerate(chain):
-        nid = f"F{i}"
-        label = _mm_escape(fr.location)
-        if fr.line_no:
-            label = f"{label} (line {fr.line_no})"
+    for nid, label in _chain_nodes(chain):
         nodes.append(f'  {nid}["{label}"]')
         edges.append(f"  {prev} --> {nid}")
         prev = nid
