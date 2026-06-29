@@ -1,0 +1,10 @@
+#!/bin/bash
+# postBuild runs once after the image is built (not at each launch).
+# Use it for steps that don't belong in requirements.txt: enabling extensions,
+# fetching data, building assets, smoke-testing the install, etc.
+set -euo pipefail
+
+# Smoke-test that the root package (auto-installed by repo2docker from the
+# repo-root pyproject.toml) imported correctly during the build, so a broken
+# install fails the Binder build instead of surfacing later to a student.
+python -c "import traceback_coach; print('traceback-coach import OK')"

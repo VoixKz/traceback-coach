@@ -1,0 +1,10 @@
+# Binder build dependencies for traceback-coach.
+#
+# This file is intentionally MINIMAL.
+#
+# The traceback-coach package lives at the ROOT of this repo (pyproject.toml is
+# at the repo root), so repo2docker AUTOMATICALLY installs it during the Binder
+# build — you do NOT list traceback-coach here, and there is no #subdirectory.
+#
+# We only pin JupyterLab, because Binder launches with ?urlpath=lab.
+jupyterlab>=4.0

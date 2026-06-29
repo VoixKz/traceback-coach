@@ -5,3 +5,8 @@ __pycache__/
 .pytest_cache/
 .venv/
 *.pyc
+.ipynb_checkpoints/
+
+# deploy secrets — never commit the real env file
+deploy/.env
+.env

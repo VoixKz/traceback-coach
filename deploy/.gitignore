@@ -1,0 +1,5 @@
+# Never commit the real secrets file. Only .env.example is tracked.
+# Order matters: ignore broadly, then re-include the template.
+.env
+*.env
+!.env.example

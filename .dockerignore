@@ -1,0 +1,41 @@
+# .dockerignore — MUST live at the BUILD CONTEXT ROOT (this repo root), because
+# docker-compose sets `context: ..`. Without it, `COPY . /opt/app` in
+# deploy/Dockerfile would bake deploy/.env (TUNNEL_TOKEN + JUPYTER_PASSWORD_HASH),
+# the entire .git history, and the host .venv into the image layers.
+#
+# CRITICAL: secrets must never enter the image.
+deploy/.env
+deploy/*.env
+!deploy/.env.example
+.env
+*.env
+!*.env.example
+
+# VCS / CI
+.git
+.gitignore
+.github
+
+# Local virtualenvs and build artifacts
+.venv
+venv
+dist
+build
+*.egg-info
+
+# Caches
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+.ipynb_checkpoints
+**/.ipynb_checkpoints
+.mypy_cache
+.ruff_cache
+
+# OS / editor cruft
+.DS_Store
+*.swp
+
+# Docs/large assets not needed at runtime
+*.zip
