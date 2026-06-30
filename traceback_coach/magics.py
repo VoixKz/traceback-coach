@@ -13,7 +13,7 @@ from IPython.display import display, HTML
 
 from ._core import (
     parse_traceback, build_card, render_card_html, load_mermaid_js,
-    lesson_card, llm_question, fade_level, render_stats_html,
+    lesson_card, llm_question, llm_status, fade_level, render_stats_html,
 )
 from .knowledge import lookup
 
@@ -29,6 +29,7 @@ BANNER = textwrap.dedent("""\
     •  %coach_lesson X  open the lesson for an error type (e.g. IndexError)
     •  %coach_level X   detail level: full | brief | min | auto (fades on repeats)
     •  %coach_stats     your most common errors this session
+    •  %coach_llm        LLM status / on / off (personalized vs template questions)
     •  %coach_help      show help
 """)
 
@@ -42,6 +43,7 @@ HELP = textwrap.dedent("""\
     %coach_lesson X   Show the lesson for error type X (NameError, IndexError, …)
     %coach_level X    detail level: full | brief | min | auto (fades on repeats)
     %coach_stats      your most common errors this session
+    •  %coach_llm        LLM status / on / off (personalized vs template questions)
     %coach_help       This help
 
     The coach never shows the fix — it teaches you to read the error yourself.
@@ -170,6 +172,25 @@ class CoachMagics(Magics):
     @line_magic
     def coach_stats(self, line):
         display(HTML(render_stats_html(_state.stats)))
+
+    @line_magic
+    def coach_llm(self, line):
+        global _LLM
+        arg = line.strip().lower()
+        if arg == "off":
+            _LLM = lambda p, s: ""
+            print("🧭  LLM off — using offline template questions.")
+            return
+        if arg == "on":
+            _LLM = llm_question
+            print("🧭  LLM on.")
+        st = llm_status()
+        if not st["key_present"]:
+            print("🧭  LLM: not configured (no API key) — offline template questions.\n"
+                  "    Set TRACEBACK_COACH_LLM_API_KEY (+ OPENAI_BASE_URL) to personalize.")
+        else:
+            active = "on" if _LLM is llm_question else "off (forced templates)"
+            print(f"🧭  LLM: configured · model={st['model']} · endpoint={st['base_url']} · {active}")
 
     @line_magic
     def coach_help(self, line):

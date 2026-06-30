@@ -318,6 +318,27 @@ def llm_question(parsed: ParsedError, cell_source: str) -> str:
         return ""
 
 
+def llm_status() -> dict:
+    """Report how the LLM-personalized-question backend is configured (from env)."""
+    key = (
+        _os.environ.get("TRACEBACK_COACH_LLM_API_KEY")
+        or _os.environ.get("DEEPSEEK_API_KEY")
+        or _os.environ.get("OPENAI_API_KEY")
+        or ""
+    )
+    base_url = (
+        _os.environ.get("TRACEBACK_COACH_LLM_BASE_URL")
+        or _os.environ.get("OPENAI_BASE_URL")
+        or "https://api.deepseek.com"
+    )
+    model = (
+        _os.environ.get("TRACEBACK_COACH_LLM_MODEL")
+        or _os.environ.get("OPENAI_MODEL")
+        or "deepseek-chat"
+    )
+    return {"key_present": bool(key), "base_url": base_url, "model": model}
+
+
 def make_question(parsed: ParsedError, family: ErrorFamily,
                   cell_source: str = "", llm=None) -> str:
     """LLM question if available, else the deterministic template."""

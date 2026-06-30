@@ -108,3 +108,25 @@ def test_explain_does_not_double_count_stats(ip):
     # re-explaining the SAME error must not inflate the tally or advance the fade
     ip.run_line_magic("coach_explain", "")
     assert M._state.stats.get("NameError") == 1
+
+
+def test_coach_llm_status_no_key(ip, monkeypatch, capsys):
+    for v in ("TRACEBACK_COACH_LLM_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(v, raising=False)
+    ip.run_line_magic("coach_llm", "")
+    out = capsys.readouterr().out.lower()
+    assert "not configured" in out or "offline" in out
+
+
+def test_coach_llm_off_forces_template_question(ip):
+    # With a fake LLM that returns a marker, 'off' must switch to templates.
+    M._LLM = lambda p, s: "FAKE_LLM_QUESTION"
+    ip.run_line_magic("coach_watch", "on")
+    ip.run_cell("print(zzz_undef)\n")
+    html_on = "".join(x for x in ip._tbc_captured if isinstance(x, str))
+    assert "FAKE_LLM_QUESTION" in html_on          # LLM used while on
+    ip.run_line_magic("coach_llm", "off")
+    ip._tbc_captured.clear()
+    ip.run_cell("print(zzz_undef)\n")
+    html_off = "".join(x for x in ip._tbc_captured if isinstance(x, str))
+    assert "FAKE_LLM_QUESTION" not in html_off      # template after off
