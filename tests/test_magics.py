@@ -99,3 +99,12 @@ def test_coach_stats_shows_tally(ip):
     ip.run_line_magic("coach_stats", "")
     html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
     assert "NameError" in html and "IndexError" in html
+
+
+def test_explain_does_not_double_count_stats(ip):
+    ip.run_line_magic("coach_watch", "on")
+    ip.run_cell("print(missing_var)\n")
+    assert M._state.stats.get("NameError") == 1
+    # re-explaining the SAME error must not inflate the tally or advance the fade
+    ip.run_line_magic("coach_explain", "")
+    assert M._state.stats.get("NameError") == 1

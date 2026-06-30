@@ -75,11 +75,14 @@ class _State:
 _state = _State()
 
 
-def _analyze_and_show(exc_type, exc_value, exc_tb, cell_source: str) -> None:
+def _analyze_and_show(exc_type, exc_value, exc_tb, cell_source: str,
+                      tally: bool = True) -> None:
     parsed = parse_traceback(exc_type, exc_value, exc_tb, cell_source)
     _state.last_error = (exc_type, exc_value, exc_tb, cell_source)
-    _state.stats[parsed.error_type] = _state.stats.get(parsed.error_type, 0) + 1
-    level = fade_level(_state.stats[parsed.error_type], _state.level_override)
+    if tally:  # re-explaining the same error must not inflate the stats/fade
+        _state.stats[parsed.error_type] = _state.stats.get(parsed.error_type, 0) + 1
+    count = _state.stats.get(parsed.error_type, 1)
+    level = fade_level(count, _state.level_override)
     card = build_card(parsed, cell_source, llm=_LLM)
     display(HTML(render_card_html(card, diagram_id=_state.next_id(), level=level)))
     _state.pending_fix = True
@@ -145,7 +148,7 @@ class CoachMagics(Magics):
         if _state.last_error is None:
             print("🧭  No error to explain yet. Run some code first.")
             return
-        _analyze_and_show(*_state.last_error)
+        _analyze_and_show(*_state.last_error, tally=False)
 
     @line_magic
     def coach_lesson(self, line):
