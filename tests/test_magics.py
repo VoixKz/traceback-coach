@@ -223,13 +223,15 @@ def test_coach_compact_status_reports_state(ip, capsys):
 
 
 def test_coach_compact_on_folds_output(ip, capsys):
-    """When compact is ON, the custom handler prints a folded note."""
+    """When compact is ON, the custom handler prints a compact folded note."""
     ip.run_line_magic("coach_compact", "on")
-    # Trigger a NameError (simpler than RecursionError, but same handler path)
-    ip.run_cell("print(undefined_var_compact)\n")
-    out = capsys.readouterr().out + capsys.readouterr().err
-    # The compact summary note must appear
-    assert "folded" in out.lower() or "compact" in out.lower() or "Coach" in out
+    capsys.readouterr()  # drain the "ON" confirmation message
+    ip.run_cell("def f(n):\n    return f(n - 1)\nf(3)\n")  # RecursionError, thousands of frames
+    captured = capsys.readouterr()
+    out = captured.out + captured.err
+    # The compact handler must emit a "folded" note instead of thousands of lines.
+    assert "folded" in out.lower()              # the handler's compact note appeared
+    assert out.count("return f(n - 1)") < 50   # NOT thousands of repeated frames
 
 
 def test_coach_compact_idempotent_double_on(ip):

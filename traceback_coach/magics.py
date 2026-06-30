@@ -130,7 +130,7 @@ def _compact_exc(shell, etype, evalue, tb, tb_offset=None):
             f"… full traceback folded by Coach ({n_frames} frames). "
             "The card below explains it. (%coach_compact off to restore) …\n"
         )
-    except Exception:  # noqa: BLE001
+    except Exception:  # Exception (not BaseException): never swallow Ctrl-C / SystemExit  # noqa: BLE001
         # Safety net: on any internal error fall back to the normal traceback
         shell.showtraceback()
 
@@ -144,8 +144,14 @@ def _install_compact_handler(shell) -> None:
 
 def _restore_default_handler(shell) -> None:
     """Restore the IPython exception handler that was active before compact mode."""
-    # IPython's set_custom_exc((), None) resets to default.
-    shell.set_custom_exc((), None)
+    if _state._prev_custom_exceptions:
+        shell.set_custom_exc(_state._prev_custom_exceptions, _state._prev_custom_exc_handler)
+    else:
+        # IPython's set_custom_exc((), None) resets to default.
+        shell.set_custom_exc((), None)
+    # Clear the saved state so we don't accidentally restore again.
+    _state._prev_custom_exceptions = ()
+    _state._prev_custom_exc_handler = None
 
 
 def _analyze_and_show(exc_type, exc_value, exc_tb, cell_source: str,
@@ -304,7 +310,7 @@ class CoachMagics(Magics):
             if not _state.compact:
                 _install_compact_handler(self.shell)
                 _state.compact = True
-            print("🧭  Compact traceback: ON — long tracebacks will be folded.")
+            print("🧭  Compact traceback: ON — folds ALL errors in this kernel until you run %coach_compact off.")
         elif mode == "off":
             if _state.compact:
                 _restore_default_handler(self.shell)
