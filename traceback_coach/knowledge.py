@@ -170,11 +170,22 @@ FAMILIES: dict[str, ErrorFamily] = {
 }
 
 
-def lookup(error_type: str) -> ErrorFamily:
+def lookup(error_type: str, lang: str = "en") -> ErrorFamily:
     """Return the ErrorFamily for an exception type name, or a generic fallback.
 
     ImportError (the parent of ModuleNotFoundError) maps to the module family.
+    When lang=="zh", the zh-HK translation is returned (falling back to the
+    English family for any key not present in FAMILIES_ZH).  The import of
+    i18n is deferred inside this branch to avoid a circular import (i18n
+    imports ErrorFamily and FAMILIES from this module at the top level).
     """
+    if lang == "zh":
+        from .i18n import FAMILIES_ZH  # lazy import — avoids circular dependency
+        if error_type == "ImportError":
+            return FAMILIES_ZH.get("ModuleNotFoundError", FAMILIES["ModuleNotFoundError"])
+        return FAMILIES_ZH.get(error_type, FAMILIES.get(error_type, _GENERIC))
+
+    # English path (default) — unchanged behaviour
     if error_type == "ImportError":
         return FAMILIES["ModuleNotFoundError"]
     return FAMILIES.get(error_type, _GENERIC)
