@@ -84,3 +84,11 @@ def test_min_is_one_line_type_plus_question():
 def test_full_is_unchanged_default():
     html = render_card_html(_name_card(), diagram_id="f1")  # default level
     assert 'class="mermaid"' in html and "<details" in html and "Question:" in html
+
+
+def test_wrap_quiz_html_prompts_and_hides_card():
+    from traceback_coach._core import wrap_quiz_html
+    out = wrap_quiz_html("<div>INNER_CARD</div>")
+    assert "Guess first" in out
+    assert "<details" in out and "Reveal" in out
+    assert "INNER_CARD" in out          # the real card is inside the details

@@ -12,7 +12,7 @@ from IPython.core.magic import Magics, magics_class, cell_magic, line_magic
 from IPython.display import display, HTML
 
 from ._core import (
-    parse_traceback, build_card, render_card_html, load_mermaid_js,
+    parse_traceback, build_card, render_card_html, wrap_quiz_html, load_mermaid_js,
     lesson_card, llm_question, llm_status, fade_level, render_stats_html,
 )
 from .knowledge import lookup
@@ -30,6 +30,7 @@ BANNER = textwrap.dedent("""\
     •  %coach_level X   detail level: full | brief | min | auto (fades on repeats)
     •  %coach_stats     your most common errors this session
     •  %coach_llm        LLM status / on / off (personalized vs template questions)
+    •  %coach_quiz on   guess the error type before the answer (active recall)
     •  %coach_help      show help
 """)
 
@@ -44,6 +45,7 @@ HELP = textwrap.dedent("""\
     %coach_level X    detail level: full | brief | min | auto (fades on repeats)
     %coach_stats      your most common errors this session
     %coach_llm        LLM status / on / off (personalized vs template questions)
+    %coach_quiz on    guess the error type before the answer (active recall)
     %coach_help       This help
 
     The coach never shows the fix — it teaches you to read the error yourself.
@@ -61,6 +63,7 @@ class _State:
         self._last_analysis = 0.0
         self.stats = {}            # error_type -> count, this session
         self.level_override = "auto"
+        self.quiz = False
 
     def next_id(self) -> str:
         self._id += 1
@@ -86,7 +89,10 @@ def _analyze_and_show(exc_type, exc_value, exc_tb, cell_source: str,
     count = _state.stats.get(parsed.error_type, 1)
     level = fade_level(count, _state.level_override)
     card = build_card(parsed, cell_source, llm=_LLM)
-    display(HTML(render_card_html(card, diagram_id=_state.next_id(), level=level)))
+    html = render_card_html(card, diagram_id=_state.next_id(), level=level)
+    if _state.quiz:
+        html = wrap_quiz_html(html)
+    display(HTML(html))
     _state.pending_fix = True
 
 
@@ -191,6 +197,18 @@ class CoachMagics(Magics):
         else:
             active = "on" if _LLM is llm_question else "off (forced templates)"
             print(f"🧭  LLM: configured · model={st['model']} · endpoint={st['base_url']} · {active}")
+
+    @line_magic
+    def coach_quiz(self, line):
+        mode = line.strip().lower()
+        if mode == "on":
+            _state.quiz = True
+            print("🧭  Quiz mode on — guess the error type before revealing.")
+        elif mode == "off":
+            _state.quiz = False
+            print("🧭  Quiz mode off.")
+        else:
+            print(f"🧭  Quiz mode: {'on' if _state.quiz else 'off'}  (use on/off)")
 
     @line_magic
     def coach_help(self, line):

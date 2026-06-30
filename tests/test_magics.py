@@ -25,6 +25,7 @@ def ip(monkeypatch):
     M._state.stats = {}
     M._state.level_override = "auto"
     M._state._last_analysis = 0.0
+    M._state.quiz = False
     # Disable debounce in tests so rapid back-to-back run_cell calls all go through.
     monkeypatch.setattr(M._state, "should_analyze", lambda: True)
     traceback_coach.load_ipython_extension(shell)
@@ -130,3 +131,19 @@ def test_coach_llm_off_forces_template_question(ip):
     ip.run_cell("print(zzz_undef)\n")
     html_off = "".join(x for x in ip._tbc_captured if isinstance(x, str))
     assert "FAKE_LLM_QUESTION" not in html_off      # template after off
+
+
+def test_quiz_mode_wraps_card_in_guess_prompt(ip):
+    ip.run_line_magic("coach_watch", "on")
+    ip.run_line_magic("coach_quiz", "on")
+    ip.run_cell("print(qz_undef)\n")
+    html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
+    assert "Guess first" in html and "<details" in html
+    assert "NameError" in html          # the card is still there, inside details
+
+
+def test_quiz_off_is_normal_card(ip):
+    ip.run_line_magic("coach_watch", "on")
+    ip.run_cell("print(qz_undef)\n")
+    html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
+    assert "Guess first" not in html

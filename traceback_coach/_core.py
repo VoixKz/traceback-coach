@@ -502,6 +502,25 @@ def fade_level(seen_count: int, override: str = "auto") -> str:
     return "min"
 
 
+def wrap_quiz_html(card_html: str) -> str:
+    """Wrap a rendered card in an active-recall 'guess the error first' prompt.
+
+    The student predicts the error type, then expands the <details> to reveal
+    the Coach's analysis — recall before the answer aids retention.
+    """
+    return (
+        "<div style=\"background:#fef3c7;border-left:4px solid #f59e0b;"
+        "border-radius:6px;padding:10px 14px;margin:8px 0;font-size:14px\">"
+        "🤔 <strong>Guess first:</strong> what <em>type</em> of error do you think "
+        "this is (NameError? TypeError? IndexError? …)? Predict it, then reveal.</div>"
+        "<details style=\"margin:6px 0\">"
+        "<summary style=\"cursor:pointer;font-weight:600;color:#4338ca\">"
+        "👁️ Reveal the Coach's analysis</summary>"
+        + card_html +
+        "</details>"
+    )
+
+
 def render_stats_html(stats: dict) -> str:
     """Render a session summary of which error types occurred, most-common first."""
     esc = _html.escape
