@@ -392,22 +392,52 @@ def load_mermaid_js() -> str:
         return ""
 
 
-def render_card_html(card: CardData, diagram_id: str = "tbc-diagram") -> str:
-    """Render the full error-anatomy card as an HTML string.
-
-    The Mermaid runtime is injected once elsewhere (magics.inject_mermaid_runtime).
-    Each card emits its diagram node + a guarded script that runs Mermaid on it,
-    falling back to the CSS diagram if the runtime is missing or errors.
+def render_card_html(card: CardData, diagram_id: str = "tbc-diagram",
+                     level: str = "full") -> str:
+    """Render the error-anatomy card. `level` controls how much is shown:
+    "full" (default) = everything; "brief" = no diagram/example; "min" =
+    just the error type + the one guiding question.
     """
     esc = _html.escape
+    wrap_open = (
+        "<div style=\"border:1px solid #e2e8f0;border-left:4px solid #6366f1;"
+        "border-radius:6px;padding:12px 16px;margin:8px 0;font-size:14px;"
+        "line-height:1.55\">"
+    )
+    coach = "<div style=\"font-weight:600;color:#4338ca\">🧭 Coach</div>"
+    question = (
+        f"<div style=\"margin-top:10px;background:#eef2ff;border-radius:4px;"
+        f"padding:8px 10px\">❓ <strong>Question:</strong> {esc(card.question)}</div>"
+    )
+
+    if level == "min":
+        return (
+            wrap_open + coach
+            + f"<div style=\"margin-top:6px\">🏷️ <strong>{esc(card.error_type)}</strong>"
+              " — you've seen this one; read it yourself.</div>"
+            + question + "</div>"
+        )
+
     where = (
         f"line {card.line_no} &rarr; <code>{esc(card.source_line.strip())}</code>"
-        if card.line_no
-        else "<code>the failing line</code>"
+        if card.line_no else "<code>the failing line</code>"
     )
-    # The CSS fallback is shown by default; if the Mermaid runtime is present
-    # and scripts execute (trusted notebook), we reveal+render the diagram and
-    # hide the fallback. If scripts are stripped, the fallback simply stays.
+    translation = (
+        f"<div style=\"margin-top:6px\">🔴 <strong>What happened:</strong> "
+        f"{esc(card.translation)}</div>"
+    )
+    family = (
+        f"<div style=\"margin-top:6px\">🏷️ <strong>{esc(card.error_type)}:</strong> "
+        f"{esc(card.family_summary)}</div>"
+        f"<div style=\"margin-top:6px;color:#475569\">🔎 <strong>Read it yourself:</strong> "
+        f"{esc(card.read_it_yourself)}</div>"
+    )
+    where_block = f"<div style=\"margin-top:6px\">📍 <strong>Where:</strong> {where}</div>"
+
+    if level == "brief":
+        return wrap_open + coach + translation + where_block + family + question + "</div>"
+
+    # level == "full" (default)
     run_script = (
         "<script>(function(){var el=document.getElementById('%(id)s');"
         "if(!el)return;try{if(window.mermaid){"
@@ -415,30 +445,24 @@ def render_card_html(card: CardData, diagram_id: str = "tbc-diagram") -> str:
         "var f=el.parentNode.querySelector('.tbc-fallback');"
         "if(f)f.style.display='none';}}catch(e){}})();</script>"
     ) % {"id": diagram_id}
-
-    return (
-        "<div style=\"border:1px solid #e2e8f0;border-left:4px solid #6366f1;"
-        "border-radius:6px;padding:12px 16px;margin:8px 0;font-size:14px;"
-        "line-height:1.55\">"
-        "<div style=\"font-weight:600;color:#4338ca\">🧭 Coach</div>"
-        f"<div style=\"margin-top:6px\">🔴 <strong>What happened:</strong> {esc(card.translation)}</div>"
+    diagram = (
         "<div style=\"margin-top:8px\">📊 <strong>Why it breaks:</strong></div>"
-        f"<pre class=\"mermaid\" id=\"{diagram_id}\" style=\"display:none;background:transparent;border:0\">{esc(card.mermaid_src)}</pre>"
+        f"<pre class=\"mermaid\" id=\"{diagram_id}\" style=\"display:none;"
+        f"background:transparent;border:0\">{esc(card.mermaid_src)}</pre>"
         f"<div class=\"tbc-fallback\" style=\"display:block\">{card.fallback_html}</div>"
         f"{run_script}"
-        f"<div style=\"margin-top:6px\">📍 <strong>Where:</strong> {where}</div>"
-        f"<div style=\"margin-top:6px\">🏷️ <strong>{esc(card.error_type)}:</strong> {esc(card.family_summary)}</div>"
-        f"<div style=\"margin-top:6px;color:#475569\">🔎 <strong>Read it yourself:</strong> {esc(card.read_it_yourself)}</div>"
+    )
+    example = (
         "<details style=\"margin-top:8px\">"
         "<summary style=\"cursor:pointer\">📖 See this error on a small example</summary>"
-        f"<pre style=\"background:#f1f5f9;padding:8px;border-radius:4px;overflow:auto\"><code>{esc(card.example_code)}</code></pre>"
+        f"<pre style=\"background:#f1f5f9;padding:8px;border-radius:4px;overflow:auto\">"
+        f"<code>{esc(card.example_code)}</code></pre>"
         f"<div>{esc(card.example_explanation)}</div>"
-        f"<div style=\"margin-top:4px;color:#475569\"><strong>Avoid it next time:</strong> {esc(card.example_avoid)}</div>"
-        "</details>"
-        f"<div style=\"margin-top:10px;background:#eef2ff;border-radius:4px;padding:8px 10px\">"
-        f"❓ <strong>Question:</strong> {esc(card.question)}</div>"
-        "</div>"
+        f"<div style=\"margin-top:4px;color:#475569\"><strong>Avoid it next time:</strong> "
+        f"{esc(card.example_avoid)}</div></details>"
     )
+    return (wrap_open + coach + translation + diagram + where_block + family
+            + example + question + "</div>")
 
 
 def fade_level(seen_count: int, override: str = "auto") -> str:

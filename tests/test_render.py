@@ -15,6 +15,12 @@ def _capture(src):
     raise AssertionError("no raise")
 
 
+def _name_card():
+    src = "print(total)\n"
+    return build_card(parse_traceback(*_capture(src), cell_source=src), src,
+                      llm=lambda p, s: "")
+
+
 def test_build_card_fields():
     src = "print(total)\n"
     card = build_card(parse_traceback(*_capture(src), cell_source=src), src,
@@ -57,3 +63,24 @@ def test_mermaid_runtime_is_vendored():
     from traceback_coach._core import load_mermaid_js
     js = load_mermaid_js()
     assert js and "mermaid" in js.lower()
+
+
+def test_brief_omits_diagram_and_example_keeps_question():
+    html = render_card_html(_name_card(), diagram_id="b1", level="brief")
+    assert 'class="mermaid"' not in html      # no diagram
+    assert "<details" not in html              # no worked example
+    assert "Question:" in html                 # still guides
+    assert "NameError" in html
+
+
+def test_min_is_one_line_type_plus_question():
+    html = render_card_html(_name_card(), diagram_id="m1", level="min")
+    assert "NameError" in html
+    assert "Question:" in html
+    assert 'class="mermaid"' not in html and "<details" not in html
+    assert "What happened" not in html         # no full translation block
+
+
+def test_full_is_unchanged_default():
+    html = render_card_html(_name_card(), diagram_id="f1")  # default level
+    assert 'class="mermaid"' in html and "<details" in html and "Question:" in html
