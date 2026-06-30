@@ -45,6 +45,10 @@ esac
 
 # ── 3. Write deploy/.env (secrets only here, perms 600, never committed) ─────
 echo "==> Writing .env (chmod 600)..."
+# Preserve any optional LLM settings already in .env so re-running this script
+# (e.g. to rotate the password) does not wipe the configured LLM key.
+LLM_LINES=""
+[ -f .env ] && LLM_LINES=$(grep -E '^(OPENAI_|TRACEBACK_COACH_LLM_|DEEPSEEK_)' .env || true)
 # Escape every '$' as '$$' so Docker Compose does not interpolate the argon2
 # hash (it is full of $argon2id$v=19$m=... segments). Compose turns $$ back
 # into a literal $ when it passes the value to the container.
@@ -56,6 +60,7 @@ TUNNEL_TOKEN=${TUNNEL_TOKEN}
 PUBLIC_HOSTNAME=${PUBLIC_HOSTNAME}
 JUPYTER_PASSWORD_HASH=${HASH_ESC}
 EOF
+[ -n "$LLM_LINES" ] && printf '%s\n' "$LLM_LINES" >> .env
 chmod 600 .env
 
 # ── 4. Build + run the stack ────────────────────────────────────────────────
