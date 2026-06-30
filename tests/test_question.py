@@ -33,3 +33,17 @@ def test_llm_question_returns_empty_without_api_key(monkeypatch):
     for var in ("TRACEBACK_COACH_LLM_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY"):
         monkeypatch.delenv(var, raising=False)
     assert _core.llm_question(_p(), "print(total)") == ""
+
+
+def test_make_question_does_not_double_call_on_internal_typeerror():
+    # A 3-arg llm that raises TypeError internally must be called ONCE and fall
+    # back to the template — not retried as if it had the wrong arity.
+    calls = {"n": 0}
+
+    def boom(parsed, cell_source, lang="en"):
+        calls["n"] += 1
+        raise TypeError("internal boom")
+
+    q = make_question(_p(), lookup("NameError"), "print(total)\n", llm=boom)
+    assert calls["n"] == 1          # called exactly once, no retry
+    assert "total" in q             # fell back to the template

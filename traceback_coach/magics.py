@@ -85,7 +85,6 @@ _state = _State()
 
 def _analyze_and_show(exc_type, exc_value, exc_tb, cell_source: str,
                       tally: bool = True) -> None:
-    from .i18n import LABELS
     lang = _state.lang
     parsed = parse_traceback(exc_type, exc_value, exc_tb, cell_source)
     _state.last_error = (exc_type, exc_value, exc_tb, cell_source)
@@ -111,7 +110,6 @@ def _show_fixed(lang: str = "en") -> None:
 
 
 def _show_lesson(family, lang: str = "en") -> None:
-    from .knowledge import lookup as _lookup
     from .i18n import FAMILIES_ZH
     if lang == "zh" and family.key in FAMILIES_ZH:
         loc_family = FAMILIES_ZH[family.key]

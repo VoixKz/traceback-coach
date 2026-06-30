@@ -5,6 +5,7 @@ Pipeline: parse_traceback -> build_card -> render_card_html.
 from __future__ import annotations
 
 import html as _html
+import inspect
 import re
 import traceback as _tb
 from dataclasses import dataclass, field
@@ -347,13 +348,8 @@ def make_question(parsed: ParsedError, family: ErrorFamily,
     """LLM question if available, else the deterministic template."""
     fn = llm if llm is not None else llm_question
     try:
-        question = fn(parsed, cell_source, lang)
-    except TypeError:
-        # Legacy llm callables that don't accept lang (e.g. lambda p, s: "")
-        try:
-            question = fn(parsed, cell_source)
-        except Exception:
-            question = ""
+        n = len(inspect.signature(fn).parameters)
+        question = fn(parsed, cell_source, lang) if n >= 3 else fn(parsed, cell_source)
     except Exception:
         question = ""
     if question:
