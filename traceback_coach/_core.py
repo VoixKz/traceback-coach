@@ -176,9 +176,107 @@ def _chain_nodes(chain: List[Frame]):
     return out
 
 
+def _detect_recursion(frames: List[Frame]):
+    """Detect recursion in a frame list.
+
+    Returns ("direct", location, count) for direct self-recursion, or
+    ("mutual", [(location, line_no, code), ...], total_cycle_count) for
+    mutual recursion, or ("none", None, 0) if no recursion detected.
+
+    A location is a (function_name, line_no) pair.
+    """
+    if not frames:
+        return ("none", None, 0)
+
+    # Count (location, line_no) occurrences.
+    location_counts: dict = {}
+    for f in frames:
+        key = (f.location, f.line_no)
+        location_counts[key] = location_counts.get(key, 0) + 1
+
+    repeating = {k for k, v in location_counts.items() if v >= 2}
+    if not repeating:
+        return ("none", None, 0)
+
+    # Check for direct recursion: only one distinct location repeats and all
+    # frames share the same location (consecutive self-calls).
+    unique_locations = {f.location for f in frames}
+    if len(unique_locations) == 1 and len(repeating) >= 1:
+        fr = frames[0]
+        count = len(frames)
+        return ("direct", fr, count)
+
+    # Mutual recursion: multiple distinct repeating locations.
+    # Collect distinct (location, line_no, code) in first-seen order, cap at 3.
+    seen: dict = {}
+    ordered = []
+    for f in frames:
+        key = (f.location, f.line_no)
+        if key not in seen and key in repeating:
+            seen[key] = True
+            ordered.append(f)
+        if len(ordered) == 3:
+            break
+
+    if len(ordered) < 2:
+        return ("none", None, 0)
+
+    total = len(frames)
+    return ("mutual", ordered, total)
+
+
 def build_mermaid(parsed: ParsedError, family: ErrorFamily) -> str:
     """Build a Mermaid `graph TD` showing the causal chain to the break."""
     cause = _fill(family.cause_phrase, parsed)
+    x_label = f'💥 {parsed.error_type}<br/>{_mm_escape(cause)}'
+    style_x = "  style X fill:#fee2e2,stroke:#ef4444,color:#991b1b"
+
+    # Check for recursion across all frames (chain + break frame).
+    rec_kind, rec_data, rec_count = _detect_recursion(parsed.frames)
+
+    if rec_kind == "direct":
+        fr = rec_data
+        loc_label = _mm_escape(f"{fr.location} (line {fr.line_no})" if fr.line_no else fr.location)
+        code_part = _mm_escape((fr.source_line or "").strip())
+        node_label = f"{loc_label}<br/>{code_part}" if code_part else loc_label
+        nodes = [
+            '  S["your code runs"]',
+            f'  R["{node_label}"]',
+            f'  X["{x_label}"]',
+        ]
+        edges = [
+            "  S --> R",
+            f'  R -->|"calls itself ×{rec_count}"| R',
+            "  R -->|breaks| X",
+        ]
+        return "graph TD\n" + "\n".join(nodes + edges) + "\n" + style_x
+
+    if rec_kind == "mutual":
+        ordered_frames = rec_data
+        nodes = ['  S["your code runs"]']
+        cycle_node_ids = []
+        for idx, fr in enumerate(ordered_frames):
+            nid = f"M{idx}"
+            cycle_node_ids.append(nid)
+            loc_label = _mm_escape(
+                f"{fr.location} (line {fr.line_no})" if fr.line_no else fr.location
+            )
+            code_part = _mm_escape((fr.source_line or "").strip())
+            label = f"{loc_label}<br/>{code_part}" if code_part else loc_label
+            nodes.append(f'  {nid}["{label}"]')
+        nodes.append(f'  X["{x_label}"]')
+
+        edges = [f"  S --> {cycle_node_ids[0]}"]
+        for i in range(len(cycle_node_ids) - 1):
+            edges.append(f"  {cycle_node_ids[i]} --> {cycle_node_ids[i + 1]}")
+        # Back-edge from last to first to show the cycle
+        edges.append(
+            f'  {cycle_node_ids[-1]} -->|"loops back ×{rec_count}"| {cycle_node_ids[0]}'
+        )
+        edges.append(f"  {cycle_node_ids[-1]} -->|breaks| X")
+        return "graph TD\n" + "\n".join(nodes + edges) + "\n" + style_x
+
+    # Non-recursive: original linear chain rendering.
     line_label = f"line {parsed.line_no}" if parsed.line_no else "your code"
     src = _mm_escape(parsed.source_line) or "the failing line"
 
@@ -194,13 +292,13 @@ def build_mermaid(parsed: ParsedError, family: ErrorFamily) -> str:
 
     nodes.append(f'  L["{line_label}: {src}"]')
     edges.append(f"  {prev} --> L")
-    nodes.append(f'  X["💥 {parsed.error_type}<br/>{_mm_escape(cause)}"]')
+    nodes.append(f'  X["{x_label}"]')
     edges.append("  L -->|breaks| X")
 
     return (
         "graph TD\n"
         + "\n".join(nodes + edges)
-        + "\n  style X fill:#fee2e2,stroke:#ef4444,color:#991b1b"
+        + "\n" + style_x
     )
 
 

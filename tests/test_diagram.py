@@ -72,18 +72,18 @@ def test_mermaid_chain_nodes_include_code():
 
 
 def test_deep_recursion_chain_is_collapsed():
-    # Direct recursion: many consecutive identical frames -> one node "xN".
+    # Direct recursion: now rendered as a self-loop (supersedes old "xN" node approach).
     frames = [Frame("f", 2, "return f(n - 1)") for _ in range(50)]
     frames.append(Frame("f", 2, "return f(n - 1)"))  # the break frame
     p = ParsedError("RecursionError", "maximum recursion depth exceeded", 2,
                     "return f(n - 1)", "", frames)
     body = build_mermaid(p, lookup("RecursionError"))
-    assert "x49" in body or "x50" in body          # collapsed with a count
+    assert "calls itself" in body                  # self-loop label present
     assert body.count('["') < 8                    # node count stays small
 
 
 def test_mutual_recursion_chain_is_capped():
-    # Alternating frames don't collapse -> must be capped with an ellipsis.
+    # Alternating frames now rendered as a cycle (supersedes old ellipsis approach).
     frames = []
     for i in range(40):
         if i % 2 == 0:
@@ -94,8 +94,8 @@ def test_mutual_recursion_chain_is_capped():
     p = ParsedError("RecursionError", "maximum recursion depth exceeded", 2,
                     "return is_odd(n - 1)", "", frames)
     body = build_mermaid(p, lookup("RecursionError"))
-    assert "more calls" in body
-    # bounded regardless of 40 input frames: S + (3 + ellipsis + 2) + L + X = 9
+    assert "loops back" in body
+    # bounded regardless of 40 input frames: S + M0 + M1 + X = 4
     assert body.count('["') <= 9
 
 
@@ -125,3 +125,44 @@ def test_flat_cell_has_no_foreign_frame_nodes():
         p = parse_traceback(*sys.exc_info(), cell_source=src)
     body = build_mermaid(p, lookup("IndexError"))
     assert "F0[" not in body
+
+
+def test_direct_recursion_renders_self_loop():
+    frames = [Frame("countdown", 2, "return countdown(n - 1)") for _ in range(2990)]
+    frames.append(Frame("countdown", 2, "return countdown(n - 1)"))  # break
+    p = ParsedError("RecursionError", "maximum recursion depth exceeded", 2,
+                    "return countdown(n - 1)", "", frames)
+    body = build_mermaid(p, lookup("RecursionError"))
+    # a node that loops to ITSELF (same id on both ends of an edge)
+    import re
+    assert re.search(r"(\w+)\s*-->\|[^|]*\|\s*\1", body), "expected a self-loop edge"
+    assert "calls itself" in body
+    assert "💥" in body and "RecursionError" in body
+    assert body.count('["') < 6   # compact, not thousands of nodes
+
+
+def test_mutual_recursion_renders_cycle():
+    frames = []
+    for i in range(2000):
+        frames.append(Frame("is_even", 2, "return is_odd(n - 1)") if i % 2 == 0
+                       else Frame("is_odd", 4, "return is_even(n - 1)"))
+    frames.append(Frame("is_even", 2, "return is_odd(n - 1)"))  # break
+    p = ParsedError("RecursionError", "maximum recursion depth exceeded", 2,
+                    "return is_odd(n - 1)", "", frames)
+    body = build_mermaid(p, lookup("RecursionError"))
+    assert "is_even" in body and "is_odd" in body
+    assert "loops back" in body
+    assert body.count('["') <= 6   # the cycle, not 2000 nodes
+
+
+def test_non_recursive_chain_unchanged():
+    # a normal 3-frame chain must still render linearly (no self-loop)
+    frames = [Frame("run", 14, "return average_of(scores, [0,1,5])"),
+              Frame("average_of", 8, "total += get_item(data, i)"),
+              Frame("get_item", 2, "return data[i]")]
+    p = ParsedError("IndexError", "list index out of range", 2,
+                    "return data[i]", "", frames)
+    body = build_mermaid(p, lookup("IndexError"))
+    import re
+    assert not re.search(r"(\w+)\s*-->\|[^|]*\|\s*\1", body)  # no self-loop
+    assert "run" in body and "average_of" in body and "get_item" in body
