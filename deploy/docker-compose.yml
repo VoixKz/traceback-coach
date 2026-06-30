@@ -35,6 +35,13 @@ services:
       # Jupyter origin/CSP lock is applied (the config fails closed without it).
       PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:?set PUBLIC_HOSTNAME in deploy/.env}
       NB_WORKDIR: /home/coach/work
+      # Optional LLM backend for personalized guiding questions. Empty by
+      # default -> the coach uses offline templates. Set these in deploy/.env
+      # to turn on personalization. NOTE: this key is readable by anyone who
+      # can run code in the lab, so use a spend-limited key.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
     volumes:
       # Persist notebooks/work across rebuilds.
       - notebooks:/home/coach/work
