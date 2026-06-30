@@ -10,3 +10,4 @@ __pycache__/
 # deploy secrets — never commit the real env file
 deploy/.env
 .env
+.superpowers/
