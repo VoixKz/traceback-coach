@@ -46,14 +46,16 @@ services:
     cap_drop:
       - ALL
     # Resource limits (honoured by `docker compose up`, non-swarm).
+    # No cpus cap, so this works on any droplet size (1 vCPU and up). Memory is
+    # capped below host RAM so the OS + cloudflared + SSH stay responsive; bump
+    # it on a bigger droplet.
     deploy:
       resources:
         limits:
-          cpus: "2.0"
-          memory: 2g
+          memory: 1536m
           pids: 512
         reservations:
-          memory: 512m
+          memory: 256m
 
   cloudflared:
     # Pinned (NOT :latest) for deterministic, auditable deploys. Bump deliberately.
