@@ -92,3 +92,21 @@ def test_wrap_quiz_html_prompts_and_hides_card():
     assert "Guess first" in out
     assert "<details" in out and "Reveal" in out
     assert "INNER_CARD" in out          # the real card is inside the details
+
+
+# ---------------------------------------------------------------------------
+# Task 2: lang threading tests
+# ---------------------------------------------------------------------------
+
+def _zh_card():
+    src = "print(total)\n"
+    from traceback_coach._core import build_card, parse_traceback
+    return build_card(parse_traceback(*_capture(src), cell_source=src), src,
+                      llm=lambda p, s: "", lang="zh")
+
+
+def test_zh_card_renders_chinese_labels():
+    from traceback_coach._core import render_card_html
+    html = render_card_html(_zh_card(), diagram_id="z1", lang="zh")
+    assert any("一" <= ch <= "鿿" for ch in html)   # has Han characters
+    assert "Question:" not in html                          # en label replaced

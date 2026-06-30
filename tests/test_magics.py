@@ -26,6 +26,7 @@ def ip(monkeypatch):
     M._state.level_override = "auto"
     M._state._last_analysis = 0.0
     M._state.quiz = False
+    M._state.lang = "en"
     # Disable debounce in tests so rapid back-to-back run_cell calls all go through.
     monkeypatch.setattr(M._state, "should_analyze", lambda: True)
     traceback_coach.load_ipython_extension(shell)
@@ -147,3 +148,23 @@ def test_quiz_off_is_normal_card(ip):
     ip.run_cell("print(qz_undef)\n")
     html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
     assert "Guess first" not in html
+
+
+# ---------------------------------------------------------------------------
+# Task 2: lang threading tests
+# ---------------------------------------------------------------------------
+
+def test_coach_lang_zh_makes_chinese_cards(ip):
+    ip.run_line_magic("coach_watch", "on")
+    ip.run_line_magic("coach_lang", "zh")
+    ip.run_cell("print(zh_undef)\n")
+    html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
+    assert any("一" <= ch <= "鿿" for ch in html)
+    assert "NameError" in html        # error-type name stays English
+
+
+def test_coach_lang_default_en(ip):
+    ip.run_line_magic("coach_watch", "on")
+    ip.run_cell("print(en_undef)\n")
+    html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
+    assert "What happened" in html or "Question:" in html   # English UI

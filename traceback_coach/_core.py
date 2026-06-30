@@ -254,12 +254,13 @@ import os as _os
 import urllib.request as _req
 
 
-def llm_question(parsed: ParsedError, cell_source: str) -> str:
+def llm_question(parsed: ParsedError, cell_source: str, lang: str = "en") -> str:
     """One short Socratic question from an OpenAI-compatible API.
 
     Returns "" when no API key is set or on any failure — the caller then
     uses the deterministic template. Honours DIVE's LiteLLM gateway via
     OPENAI_BASE_URL. NEVER asks the model for a fix (system prompt forbids it).
+    When lang=="zh", instructs the model to reply in Traditional Chinese (zh-HK).
     """
     api_key = (
         _os.environ.get("TRACEBACK_COACH_LLM_API_KEY")
@@ -286,6 +287,8 @@ def llm_question(parsed: ParsedError, cell_source: str) -> str:
         "something specific in their code. NEVER give the fix or any corrected "
         "code. Output only the question."
     )
+    if lang == "zh":
+        system += " Reply in Traditional Chinese (zh-HK)."
     user = (
         f"Error: {parsed.error_type}: {parsed.message}\n"
         f"Failing line {parsed.line_no}: {parsed.source_line}\n\n"
@@ -340,11 +343,17 @@ def llm_status() -> dict:
 
 
 def make_question(parsed: ParsedError, family: ErrorFamily,
-                  cell_source: str = "", llm=None) -> str:
+                  cell_source: str = "", llm=None, lang: str = "en") -> str:
     """LLM question if available, else the deterministic template."""
     fn = llm if llm is not None else llm_question
     try:
-        question = fn(parsed, cell_source)
+        question = fn(parsed, cell_source, lang)
+    except TypeError:
+        # Legacy llm callables that don't accept lang (e.g. lambda p, s: "")
+        try:
+            question = fn(parsed, cell_source)
+        except Exception:
+            question = ""
     except Exception:
         question = ""
     if question:
@@ -372,8 +381,13 @@ class CardData:
     question: str
 
 
-def build_card(parsed: ParsedError, cell_source: str = "", llm=None) -> CardData:
-    family = lookup(parsed.error_type)
+def build_card(parsed: ParsedError, cell_source: str = "", llm=None,
+               lang: str = "en") -> CardData:
+    from .i18n import FAMILIES_ZH
+    if lang == "zh" and parsed.error_type in FAMILIES_ZH:
+        family = FAMILIES_ZH[parsed.error_type]
+    else:
+        family = lookup(parsed.error_type)
     return CardData(
         error_type=parsed.error_type,
         translation=_fill(family.translation, parsed),
@@ -387,11 +401,11 @@ def build_card(parsed: ParsedError, cell_source: str = "", llm=None) -> CardData
         example_code=family.example_code,
         example_explanation=family.example_explanation,
         example_avoid=family.example_avoid,
-        question=make_question(parsed, family, cell_source, llm),
+        question=make_question(parsed, family, cell_source, llm, lang),
     )
 
 
-def lesson_card(family: ErrorFamily) -> CardData:
+def lesson_card(family: ErrorFamily, lang: str = "en") -> CardData:
     """Build a CardData for proactive %coach_lesson (no live error)."""
     synthetic = ParsedError(
         error_type=family.key,
@@ -401,7 +415,7 @@ def lesson_card(family: ErrorFamily) -> CardData:
         token="",
         frames=[],
     )
-    return build_card(synthetic, family.example_code, llm=lambda p, s: "")
+    return build_card(synthetic, family.example_code, llm=lambda p, s: "", lang=lang)
 
 
 def load_mermaid_js() -> str:
@@ -414,28 +428,30 @@ def load_mermaid_js() -> str:
 
 
 def render_card_html(card: CardData, diagram_id: str = "tbc-diagram",
-                     level: str = "full") -> str:
+                     level: str = "full", lang: str = "en") -> str:
     """Render the error-anatomy card. `level` controls how much is shown:
     "full" (default) = everything; "brief" = no diagram/example; "min" =
     just the error type + the one guiding question.
     """
+    from .i18n import LABELS
+    lbl = LABELS[lang]
     esc = _html.escape
     wrap_open = (
         "<div style=\"border:1px solid #e2e8f0;border-left:4px solid #6366f1;"
         "border-radius:6px;padding:12px 16px;margin:8px 0;font-size:14px;"
         "line-height:1.55\">"
     )
-    coach = "<div style=\"font-weight:600;color:#4338ca\">🧭 Coach</div>"
+    coach = f"<div style=\"font-weight:600;color:#4338ca\">{lbl['coach']}</div>"
     question = (
         f"<div style=\"margin-top:10px;background:#eef2ff;border-radius:4px;"
-        f"padding:8px 10px\">❓ <strong>Question:</strong> {esc(card.question)}</div>"
+        f"padding:8px 10px\">❓ <strong>{lbl['question']}</strong> {esc(card.question)}</div>"
     )
 
     if level == "min":
         return (
             wrap_open + coach
             + f"<div style=\"margin-top:6px\">🏷️ <strong>{esc(card.error_type)}</strong>"
-              " — you've seen this one; read it yourself.</div>"
+              f"{lbl['seen_min']}</div>"
             + question + "</div>"
         )
 
@@ -444,16 +460,16 @@ def render_card_html(card: CardData, diagram_id: str = "tbc-diagram",
         if card.line_no else "<code>the failing line</code>"
     )
     translation = (
-        f"<div style=\"margin-top:6px\">🔴 <strong>What happened:</strong> "
+        f"<div style=\"margin-top:6px\">🔴 <strong>{lbl['what_happened']}</strong> "
         f"{esc(card.translation)}</div>"
     )
     family = (
         f"<div style=\"margin-top:6px\">🏷️ <strong>{esc(card.error_type)}:</strong> "
         f"{esc(card.family_summary)}</div>"
-        f"<div style=\"margin-top:6px;color:#475569\">🔎 <strong>Read it yourself:</strong> "
+        f"<div style=\"margin-top:6px;color:#475569\">🔎 <strong>{lbl['family_read']}</strong> "
         f"{esc(card.read_it_yourself)}</div>"
     )
-    where_block = f"<div style=\"margin-top:6px\">📍 <strong>Where:</strong> {where}</div>"
+    where_block = f"<div style=\"margin-top:6px\">📍 <strong>{lbl['where']}</strong> {where}</div>"
 
     if level == "brief":
         return wrap_open + coach + translation + where_block + family + question + "</div>"
@@ -467,7 +483,7 @@ def render_card_html(card: CardData, diagram_id: str = "tbc-diagram",
         "if(f)f.style.display='none';}}catch(e){}})();</script>"
     ) % {"id": diagram_id}
     diagram = (
-        "<div style=\"margin-top:8px\">📊 <strong>Why it breaks:</strong></div>"
+        f"<div style=\"margin-top:8px\">📊 <strong>{lbl['why_breaks']}</strong></div>"
         f"<pre class=\"mermaid\" id=\"{diagram_id}\" style=\"display:none;"
         f"background:transparent;border:0\">{esc(card.mermaid_src)}</pre>"
         f"<div class=\"tbc-fallback\" style=\"display:block\">{card.fallback_html}</div>"
@@ -475,11 +491,11 @@ def render_card_html(card: CardData, diagram_id: str = "tbc-diagram",
     )
     example = (
         "<details style=\"margin-top:8px\">"
-        "<summary style=\"cursor:pointer\">📖 See this error on a small example</summary>"
+        f"<summary style=\"cursor:pointer\">📖 {lbl['see_example']}</summary>"
         f"<pre style=\"background:#f1f5f9;padding:8px;border-radius:4px;overflow:auto\">"
         f"<code>{esc(card.example_code)}</code></pre>"
         f"<div>{esc(card.example_explanation)}</div>"
-        f"<div style=\"margin-top:4px;color:#475569\"><strong>Avoid it next time:</strong> "
+        f"<div style=\"margin-top:4px;color:#475569\"><strong>{lbl['avoid_next']}</strong> "
         f"{esc(card.example_avoid)}</div></details>"
     )
     return (wrap_open + coach + translation + diagram + where_block + family
@@ -502,20 +518,21 @@ def fade_level(seen_count: int, override: str = "auto") -> str:
     return "min"
 
 
-def wrap_quiz_html(card_html: str) -> str:
+def wrap_quiz_html(card_html: str, lang: str = "en") -> str:
     """Wrap a rendered card in an active-recall 'guess the error first' prompt.
 
     The student predicts the error type, then expands the <details> to reveal
     the Coach's analysis — recall before the answer aids retention.
     """
+    from .i18n import LABELS
+    lbl = LABELS[lang]
     return (
         "<div style=\"background:#fef3c7;border-left:4px solid #f59e0b;"
         "border-radius:6px;padding:10px 14px;margin:8px 0;font-size:14px\">"
-        "🤔 <strong>Guess first:</strong> what <em>type</em> of error do you think "
-        "this is (NameError? TypeError? IndexError? …)? Predict it, then reveal.</div>"
+        f"{lbl['guess_first']}</div>"
         "<details style=\"margin:6px 0\">"
         "<summary style=\"cursor:pointer;font-weight:600;color:#4338ca\">"
-        "👁️ Reveal the Coach's analysis</summary>"
+        f"{lbl['reveal']}</summary>"
         + card_html +
         "</details>"
     )

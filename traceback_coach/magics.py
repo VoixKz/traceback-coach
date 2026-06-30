@@ -31,6 +31,7 @@ BANNER = textwrap.dedent("""\
     •  %coach_stats     your most common errors this session
     •  %coach_llm        LLM status / on / off (personalized vs template questions)
     •  %coach_quiz on   guess the error type before the answer (active recall)
+    •  %coach_lang en|zh  set explanation language (default: en)
     •  %coach_help      show help
 """)
 
@@ -46,6 +47,7 @@ HELP = textwrap.dedent("""\
     %coach_stats      your most common errors this session
     %coach_llm        LLM status / on / off (personalized vs template questions)
     %coach_quiz on    guess the error type before the answer (active recall)
+    %coach_lang en|zh  set explanation language (default: en; status to check)
     %coach_help       This help
 
     The coach never shows the fix — it teaches you to read the error yourself.
@@ -64,6 +66,7 @@ class _State:
         self.stats = {}            # error_type -> count, this session
         self.level_override = "auto"
         self.quiz = False
+        self.lang = "en"
 
     def next_id(self) -> str:
         self._id += 1
@@ -82,32 +85,40 @@ _state = _State()
 
 def _analyze_and_show(exc_type, exc_value, exc_tb, cell_source: str,
                       tally: bool = True) -> None:
+    from .i18n import LABELS
+    lang = _state.lang
     parsed = parse_traceback(exc_type, exc_value, exc_tb, cell_source)
     _state.last_error = (exc_type, exc_value, exc_tb, cell_source)
     if tally:  # re-explaining the same error must not inflate the stats/fade
         _state.stats[parsed.error_type] = _state.stats.get(parsed.error_type, 0) + 1
     count = _state.stats.get(parsed.error_type, 1)
     level = fade_level(count, _state.level_override)
-    card = build_card(parsed, cell_source, llm=_LLM)
-    html = render_card_html(card, diagram_id=_state.next_id(), level=level)
+    card = build_card(parsed, cell_source, llm=_LLM, lang=lang)
+    html = render_card_html(card, diagram_id=_state.next_id(), level=level, lang=lang)
     if _state.quiz:
-        html = wrap_quiz_html(html)
+        html = wrap_quiz_html(html, lang=lang)
     display(HTML(html))
     _state.pending_fix = True
 
 
-def _show_fixed() -> None:
+def _show_fixed(lang: str = "en") -> None:
+    from .i18n import LABELS
+    msg = LABELS[lang]["fixed_it"]
     display(HTML(
         "<div style='background:#d1fae5;border-left:4px solid #10b981;"
-        "padding:10px 14px;margin:8px 0;border-radius:4px;font-size:14px'>"
-        "✅ <strong>Fixed it!</strong> The cell that was failing now runs clean. "
-        "What did you change, and why did it work?</div>"
+        f"padding:10px 14px;margin:8px 0;border-radius:4px;font-size:14px'>{msg}</div>"
     ))
 
 
-def _show_lesson(family) -> None:
-    card = lesson_card(family)
-    html = render_card_html(card, diagram_id=_state.next_id())
+def _show_lesson(family, lang: str = "en") -> None:
+    from .knowledge import lookup as _lookup
+    from .i18n import FAMILIES_ZH
+    if lang == "zh" and family.key in FAMILIES_ZH:
+        loc_family = FAMILIES_ZH[family.key]
+    else:
+        loc_family = family
+    card = lesson_card(loc_family, lang=lang)
+    html = render_card_html(card, diagram_id=_state.next_id(), lang=lang)
     display(HTML(
         f"<div style='font-size:13px;color:#64748b;margin-bottom:2px'>"
         f"Lesson: {family.key}</div>{html}"
@@ -164,7 +175,7 @@ class CoachMagics(Magics):
         if not name:
             print("🧭  Usage: %coach_lesson <ErrorType>   e.g. %coach_lesson IndexError")
             return
-        _show_lesson(lookup(name))
+        _show_lesson(lookup(name), lang=_state.lang)
 
     @line_magic
     def coach_level(self, line):
@@ -211,6 +222,19 @@ class CoachMagics(Magics):
             print(f"🧭  Quiz mode: {'on' if _state.quiz else 'off'}  (use on/off)")
 
     @line_magic
+    def coach_lang(self, line):
+        arg = line.strip().lower()
+        if arg == "status":
+            print(f"🧭  Language: {_state.lang}")
+            return
+        if arg not in ("en", "zh"):
+            print("🧭  Usage: %coach_lang en|zh|status")
+            return
+        _state.lang = arg
+        label = "English" if arg == "en" else "Traditional Chinese (zh-HK)"
+        print(f"🧭  Language set to {label}.")
+
+    @line_magic
     def coach_help(self, line):
         print(HELP)
 
@@ -229,7 +253,7 @@ def _post_run_cell_hook(result):
         _analyze_and_show(type(exc), exc, exc.__traceback__, source)
     elif _state.pending_fix:
         _state.pending_fix = False
-        _show_fixed()
+        _show_fixed(lang=_state.lang)
 
 
 def register(ipython):
