@@ -82,8 +82,11 @@ WORKDIR ${NB_WORKDIR}
 EXPOSE 8888
 
 # Container-local healthcheck (compose network only; not published to host).
+# Use the ungated /login page and DON'T use `-f`: a password-gated server
+# answers /api/status with 403, which `curl -f` would wrongly treat as down.
+# `curl -s` exits 0 on any HTTP response, so this checks reachability.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl -fsS http://localhost:8888/api/status || exit 1
+    CMD curl -s -o /dev/null http://localhost:8888/login || exit 1
 
 ENTRYPOINT ["tini", "--"]
 # JUPYTER_TOKEN/JUPYTER_PASSWORD env is intentionally NOT set here; auth is the
