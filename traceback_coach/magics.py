@@ -70,9 +70,6 @@ class _State:
         self.quiz = False
         self.lang = "en"
         self.compact = False       # opt-in compact traceback mode (Task B)
-        # Saved handler before we installed our compact handler, so we can restore it.
-        self._prev_custom_exceptions: tuple = ()
-        self._prev_custom_exc_handler = None
 
     def next_id(self) -> str:
         self._id += 1
@@ -136,22 +133,19 @@ def _compact_exc(shell, etype, evalue, tb, tb_offset=None):
 
 
 def _install_compact_handler(shell) -> None:
-    """Register the compact exc handler; save the current one for later restore."""
-    _state._prev_custom_exceptions = shell.custom_exceptions
-    _state._prev_custom_exc_handler = shell.CustomTB if hasattr(shell, "CustomTB") else None
+    """Register the compact exc handler for the duration of compact mode."""
     shell.set_custom_exc((BaseException,), _compact_exc)
 
 
 def _restore_default_handler(shell) -> None:
-    """Restore the IPython exception handler that was active before compact mode."""
-    if _state._prev_custom_exceptions:
-        shell.set_custom_exc(_state._prev_custom_exceptions, _state._prev_custom_exc_handler)
-    else:
-        # IPython's set_custom_exc((), None) resets to default.
-        shell.set_custom_exc((), None)
-    # Clear the saved state so we don't accidentally restore again.
-    _state._prev_custom_exceptions = ()
-    _state._prev_custom_exc_handler = None
+    """Reset to IPython's default traceback rendering.
+
+    We deliberately reset to the default rather than trying to round-trip a
+    third-party handler: IPython's `shell.CustomTB` is an already-wrapped bound
+    method, so re-feeding it to `set_custom_exc` double-wraps and breaks it.
+    traceback-coach is the only `set_custom_exc` user here, so default is right.
+    """
+    shell.set_custom_exc((), None)
 
 
 def _analyze_and_show(exc_type, exc_value, exc_tb, cell_source: str,
