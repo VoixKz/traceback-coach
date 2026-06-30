@@ -71,7 +71,7 @@ ENV NB_HOME=/home/${NB_USER} \
     JUPYTER_CONFIG=/etc/jupyter/jupyter_server_config.py
 
 RUN mkdir -p ${NB_WORKDIR} /etc/jupyter \
-    && cp /opt/app/demo.ipynb ${NB_WORKDIR}/demo.ipynb \
+    && cp /opt/app/*.ipynb ${NB_WORKDIR}/ \
     && cp /opt/app/deploy/jupyter_server_config.py ${JUPYTER_CONFIG} \
     && chown -R ${NB_UID}:${NB_GID} ${NB_HOME} /etc/jupyter
 
