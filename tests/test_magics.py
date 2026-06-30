@@ -22,6 +22,11 @@ def ip(monkeypatch):
     M._state.last_error = None
     M._state.watch = False
     M._state.pending_fix = False
+    M._state.stats = {}
+    M._state.level_override = "auto"
+    M._state._last_analysis = 0.0
+    # Disable debounce in tests so rapid back-to-back run_cell calls all go through.
+    monkeypatch.setattr(M._state, "should_analyze", lambda: True)
     traceback_coach.load_ipython_extension(shell)
     shell._tbc_captured = captured
     yield shell
@@ -59,3 +64,38 @@ def test_explain_without_error_is_graceful(ip, capsys):
     ip.run_line_magic("coach_explain", "")
     out = capsys.readouterr().out
     assert "no error" in out.lower() or ip._tbc_captured == []
+
+
+def test_repeated_error_fades_full_then_brief_then_min(ip):
+    ip.run_line_magic("coach_watch", "on")
+    htmls = []
+    for _ in range(3):
+        ip._tbc_captured.clear()
+        ip.run_cell("print(missing_var)\n")
+        htmls.append("".join(x for x in ip._tbc_captured if isinstance(x, str)))
+    # 1st full (has diagram), 2nd brief (no diagram, no details), 3rd min
+    assert 'class="mermaid"' in htmls[0]
+    assert 'class="mermaid"' not in htmls[1] and "<details" not in htmls[1]
+    assert "you've seen this one" in htmls[2]
+    # every level still asks a question, never shows a fix
+    assert all("Question:" in h for h in htmls)
+
+
+def test_coach_level_override_forces_full(ip):
+    ip.run_line_magic("coach_watch", "on")
+    ip.run_line_magic("coach_level", "full")
+    for _ in range(3):
+        ip._tbc_captured.clear()
+        ip.run_cell("print(missing_var)\n")
+    html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
+    assert 'class="mermaid"' in html      # forced full despite repetition
+
+
+def test_coach_stats_shows_tally(ip):
+    ip.run_line_magic("coach_watch", "on")
+    ip.run_cell("print(a_undef)\n")
+    ip.run_cell("xs = [1]; xs[9]\n")
+    ip._tbc_captured.clear()
+    ip.run_line_magic("coach_stats", "")
+    html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
+    assert "NameError" in html and "IndexError" in html

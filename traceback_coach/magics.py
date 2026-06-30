@@ -13,7 +13,7 @@ from IPython.display import display, HTML
 
 from ._core import (
     parse_traceback, build_card, render_card_html, load_mermaid_js,
-    lesson_card, llm_question,
+    lesson_card, llm_question, fade_level, render_stats_html,
 )
 from .knowledge import lookup
 
@@ -27,6 +27,8 @@ BANNER = textwrap.dedent("""\
     •  %coach_watch on  explain errors in every cell automatically
     •  %coach_explain   re-explain the last error
     •  %coach_lesson X  open the lesson for an error type (e.g. IndexError)
+    •  %coach_level X   detail level: full | brief | min | auto (fades on repeats)
+    •  %coach_stats     your most common errors this session
     •  %coach_help      show help
 """)
 
@@ -38,6 +40,8 @@ HELP = textwrap.dedent("""\
     %coach_off        Stop watching
     %coach_explain    Re-explain the most recent error
     %coach_lesson X   Show the lesson for error type X (NameError, IndexError, …)
+    %coach_level X    detail level: full | brief | min | auto (fades on repeats)
+    %coach_stats      your most common errors this session
     %coach_help       This help
 
     The coach never shows the fix — it teaches you to read the error yourself.
@@ -53,6 +57,8 @@ class _State:
         self.pending_fix = False
         self._id = 0
         self._last_analysis = 0.0
+        self.stats = {}            # error_type -> count, this session
+        self.level_override = "auto"
 
     def next_id(self) -> str:
         self._id += 1
@@ -72,8 +78,10 @@ _state = _State()
 def _analyze_and_show(exc_type, exc_value, exc_tb, cell_source: str) -> None:
     parsed = parse_traceback(exc_type, exc_value, exc_tb, cell_source)
     _state.last_error = (exc_type, exc_value, exc_tb, cell_source)
+    _state.stats[parsed.error_type] = _state.stats.get(parsed.error_type, 0) + 1
+    level = fade_level(_state.stats[parsed.error_type], _state.level_override)
     card = build_card(parsed, cell_source, llm=_LLM)
-    display(HTML(render_card_html(card, diagram_id=_state.next_id())))
+    display(HTML(render_card_html(card, diagram_id=_state.next_id(), level=level)))
     _state.pending_fix = True
 
 
@@ -146,6 +154,19 @@ class CoachMagics(Magics):
             print("🧭  Usage: %coach_lesson <ErrorType>   e.g. %coach_lesson IndexError")
             return
         _show_lesson(lookup(name))
+
+    @line_magic
+    def coach_level(self, line):
+        val = line.strip().lower() or "auto"
+        if val not in ("full", "brief", "min", "auto"):
+            print("🧭  Usage: %coach_level <full|brief|min|auto>")
+            return
+        _state.level_override = val
+        print(f"🧭  Detail level: {val}")
+
+    @line_magic
+    def coach_stats(self, line):
+        display(HTML(render_stats_html(_state.stats)))
 
     @line_magic
     def coach_help(self, line):
