@@ -439,3 +439,47 @@ def render_card_html(card: CardData, diagram_id: str = "tbc-diagram") -> str:
         f"❓ <strong>Question:</strong> {esc(card.question)}</div>"
         "</div>"
     )
+
+
+def fade_level(seen_count: int, override: str = "auto") -> str:
+    """Resolve how much of the card to show.
+
+    override in {"full","brief","min"} forces that level. "auto" (default)
+    fades as the student repeats an error type: 1st time full, 2nd brief,
+    3rd+ minimal — so they learn to read it themselves.
+    """
+    if override in ("full", "brief", "min"):
+        return override
+    if seen_count <= 1:
+        return "full"
+    if seen_count == 2:
+        return "brief"
+    return "min"
+
+
+def render_stats_html(stats: dict) -> str:
+    """Render a session summary of which error types occurred, most-common first."""
+    esc = _html.escape
+    if not stats:
+        return (
+            "<div style=\"border:1px solid #e2e8f0;border-radius:6px;"
+            "padding:10px 14px;margin:8px 0;font-size:14px\">"
+            "🧭 <strong>Coach:</strong> no errors yet this session — nice.</div>"
+        )
+    items = sorted(stats.items(), key=lambda kv: (-kv[1], kv[0]))
+    top = items[0][0]
+    total = sum(stats.values())
+    rows = "".join(
+        f"<tr><td style=\"padding:2px 10px\">{esc(k)}</td>"
+        f"<td style=\"padding:2px 10px;text-align:right\">{v}</td></tr>"
+        for k, v in items
+    )
+    return (
+        "<div style=\"border:1px solid #e2e8f0;border-left:4px solid #6366f1;"
+        "border-radius:6px;padding:12px 16px;margin:8px 0;font-size:14px\">"
+        "<div style=\"font-weight:600;color:#4338ca\">🧭 Your errors this session</div>"
+        f"<table style=\"margin:8px 0;border-collapse:collapse\">{rows}</table>"
+        f"<div>Most common: <strong>{esc(top)}</strong> &middot; total: {total}. "
+        f"Read up on it: <code>%coach_lesson {esc(top)}</code></div>"
+        "</div>"
+    )
