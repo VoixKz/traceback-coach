@@ -44,7 +44,7 @@ FAMILIES_ZH: dict[str, ErrorFamily] = {
     "ValueError": ErrorFamily(
         key="ValueError",
         translation="類型是對的，但值不被接受：{message}",
-        family_summary="種類正確，內容卻有問題（例如 int('abc')）。",
+        family_summary="類型正確，內容卻有問題（例如 int('abc')）。",
         read_it_yourself="錯誤訊息會引用出問題的值 — 看看你傳入了什麼。",
         cause_phrase="這個值在此處不被接受",
         example_code=FAMILIES["ValueError"].example_code,
@@ -137,7 +137,7 @@ FAMILIES_ZH: dict[str, ErrorFamily] = {
         cause_phrase="遞迴沒有基本情況來停止",
         example_code=FAMILIES["RecursionError"].example_code,
         example_explanation="`f` 永遠呼叫 `f`；沒有任何一條路徑可以不遞迴地回傳。",
-        example_avoid="添加一個能在繼續遞迴之前回傳的基本情況，並確保每次呼叫都在向它靠近。",
+        example_avoid="加入一個能在繼續遞迴之前回傳的基本情況，並確保每次呼叫都在向它靠近。",
         question_template="什麼條件應該停止遞迴？這個條件是否真的能被觸發？",
     ),
     "UnboundLocalError": ErrorFamily(
