@@ -45,17 +45,15 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # Resource limits (honoured by `docker compose up`, non-swarm).
     deploy:
       resources:
         limits:
           cpus: "2.0"
           memory: 2g
+          pids: 512
         reservations:
           memory: 512m
-    # Compose (non-swarm) also honours these top-level shortcuts:
-    mem_limit: 2g
-    cpus: 2.0
-    pids_limit: 512
 
   cloudflared:
     # Pinned (NOT :latest) for deterministic, auditable deploys. Bump deliberately.
