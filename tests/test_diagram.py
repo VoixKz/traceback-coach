@@ -96,7 +96,7 @@ def test_mutual_recursion_chain_is_capped():
     body = build_mermaid(p, lookup("RecursionError"))
     assert "loops back" in body
     # bounded regardless of 40 input frames: S + M0 + M1 + X = 4
-    assert body.count('["') <= 9
+    assert body.count('["') <= 6
 
 
 def test_nested_call_chain_shows_each_function():
@@ -166,3 +166,16 @@ def test_non_recursive_chain_unchanged():
     import re
     assert not re.search(r"(\w+)\s*-->\|[^|]*\|\s*\1", body)  # no self-loop
     assert "run" in body and "average_of" in body and "get_item" in body
+
+
+def test_direct_recursion_with_entry_frame_self_loops():
+    # A real traceback includes the cell entry frame before the recursive frames.
+    frames = [Frame("your cell", 3, "countdown(5)")]
+    frames += [Frame("countdown", 2, "return countdown(n - 1)") for _ in range(2990)]
+    p = ParsedError("RecursionError", "maximum recursion depth exceeded", 2,
+                    "return countdown(n - 1)", "", frames)
+    body = build_mermaid(p, lookup("RecursionError"))
+    import re
+    assert re.search(r"(\w+)\s*-->\|[^|]*\|\s*\1", body), "expected a self-loop"
+    assert "calls itself" in body
+    assert body.count('["') < 6

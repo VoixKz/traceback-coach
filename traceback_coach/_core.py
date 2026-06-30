@@ -198,29 +198,24 @@ def _detect_recursion(frames: List[Frame]):
     if not repeating:
         return ("none", None, 0)
 
-    # Check for direct recursion: only one distinct location repeats and all
-    # frames share the same location (consecutive self-calls).
-    unique_locations = {f.location for f in frames}
-    if len(unique_locations) == 1 and len(repeating) >= 1:
-        fr = frames[0]
-        count = len(frames)
-        return ("direct", fr, count)
-
-    # Mutual recursion: multiple distinct repeating locations.
-    # Collect distinct (location, line_no, code) in first-seen order, cap at 3.
-    seen: dict = {}
-    ordered = []
+    # Build the set of repeating locations in first-seen order.
+    seen_order: dict = {}
     for f in frames:
         key = (f.location, f.line_no)
-        if key not in seen and key in repeating:
-            seen[key] = True
-            ordered.append(f)
-        if len(ordered) == 3:
-            break
+        if key in repeating and key not in seen_order:
+            seen_order[key] = f
 
-    if len(ordered) < 2:
-        return ("none", None, 0)
+    repeating_frames = list(seen_order.values())
 
+    # Direct recursion: exactly one location repeats (ignore non-repeating
+    # entry frames like "your cell").
+    if len(repeating_frames) == 1:
+        fr = repeating_frames[0]
+        count = location_counts[(fr.location, fr.line_no)]
+        return ("direct", fr, count)
+
+    # Mutual recursion: multiple distinct repeating locations — cap at 3.
+    ordered = repeating_frames[:3]
     total = len(frames)
     return ("mutual", ordered, total)
 
