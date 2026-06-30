@@ -108,6 +108,9 @@ Check it live with `%coach_llm`. The model is told to **never** output a fix.
 
 The package ships demo + lesson notebooks (also seeded into the deploy lab):
 
+- **`00_showcase.ipynb` — the full feature tour** (start here): anatomy card, causal
+  diagram, recursion-as-a-loop, progressive fade, stats, quiz, bilingual EN/中文,
+  LLM-personalized questions, compact tracebacks, watch mode, lessons.
 - `demo.ipynb` — basic tour (nested calls, recursion, watch mode)
 - `demo_02_features.ipynb` — fade before/after, stats, quiz, language, LLM toggle
 - `lesson_01_names_and_types`, `lesson_02_lists_and_dicts`,
