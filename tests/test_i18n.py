@@ -34,3 +34,9 @@ def test_labels_have_both_langs():
     for k in need:
         assert LABELS["en"][k].strip() and LABELS["zh"][k].strip()
         assert any("一" <= ch <= "鿿" for ch in LABELS["zh"][k])
+
+def test_importerror_maps_to_module_family_both_langs():
+    from traceback_coach.knowledge import lookup, FAMILIES
+    from traceback_coach.i18n import FAMILIES_ZH
+    assert lookup("ImportError") is FAMILIES["ModuleNotFoundError"]
+    assert lookup("ImportError", "zh") is FAMILIES_ZH["ModuleNotFoundError"]

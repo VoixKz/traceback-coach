@@ -169,14 +169,14 @@ LABELS: dict[str, dict[str, str]] = {
         "see_example": "See this error on a small example",
         "avoid_next": "Avoid it next time:",
         "question": "Question:",
-        "seen_min": "you've seen this one; read it yourself.",
+        "seen_min": " — you've seen this one; read it yourself.",
         "guess_first": (
-            "🤔 Guess first: what type of error do you think "
+            "🤔 <strong>Guess first:</strong> what <em>type</em> of error do you think "
             "this is (NameError? TypeError? IndexError? …)? Predict it, then reveal."
         ),
         "reveal": "👁️ Reveal the Coach's analysis",
         "fixed_it": (
-            "✅ Fixed it! The cell that was failing now runs clean. "
+            "✅ <strong>Fixed it!</strong> The cell that was failing now runs clean. "
             "What did you change, and why did it work?"
         ),
     },
@@ -189,14 +189,14 @@ LABELS: dict[str, dict[str, str]] = {
         "see_example": "看看這個錯誤的小範例",
         "avoid_next": "下次如何避免：",
         "question": "問題：",
-        "seen_min": "你已見過這個錯誤；請自行閱讀錯誤訊息。",
+        "seen_min": " — 你已見過這個錯誤；請自行閱讀錯誤訊息。",
         "guess_first": (
-            "🤔 先猜猜看：你認為這是哪種錯誤（NameError？TypeError？IndexError？……）？"
-            "先預測，再揭曉答案。"
+            "🤔 <strong>先猜猜看：</strong>你認為這是哪種<em>類型</em>的錯誤"
+            "（NameError？TypeError？IndexError？……）？先預測，再揭曉答案。"
         ),
         "reveal": "👁️ 揭曉教練的分析",
         "fixed_it": (
-            "✅ 修好了！之前出錯的儲存格現在可以正常執行了。"
+            "✅ <strong>修好了！</strong>之前出錯的儲存格現在可以正常執行了。"
             "你改了什麼？為什麼這樣修就能解決問題？"
         ),
     },
