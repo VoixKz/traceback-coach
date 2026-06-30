@@ -43,7 +43,7 @@ HELP = textwrap.dedent("""\
     %coach_lesson X   Show the lesson for error type X (NameError, IndexError, …)
     %coach_level X    detail level: full | brief | min | auto (fades on repeats)
     %coach_stats      your most common errors this session
-    •  %coach_llm        LLM status / on / off (personalized vs template questions)
+    %coach_llm        LLM status / on / off (personalized vs template questions)
     %coach_help       This help
 
     The coach never shows the fix — it teaches you to read the error yourself.
