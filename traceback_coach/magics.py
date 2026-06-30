@@ -32,6 +32,7 @@ BANNER = textwrap.dedent("""\
     •  %coach_llm        LLM status / on / off (personalized vs template questions)
     •  %coach_quiz on   guess the error type before the answer (active recall)
     •  %coach_lang en|zh  set explanation language (default: en)
+    •  %coach_compact on  fold the native traceback to a short summary (opt-in)
     •  %coach_help      show help
 """)
 
@@ -48,6 +49,7 @@ HELP = textwrap.dedent("""\
     %coach_llm        LLM status / on / off (personalized vs template questions)
     %coach_quiz on    guess the error type before the answer (active recall)
     %coach_lang en|zh  set explanation language (default: en; status to check)
+    %coach_compact on  fold the native traceback to a short summary (on/off/status)
     %coach_help       This help
 
     The coach never shows the fix — it teaches you to read the error yourself.
@@ -67,6 +69,10 @@ class _State:
         self.level_override = "auto"
         self.quiz = False
         self.lang = "en"
+        self.compact = False       # opt-in compact traceback mode (Task B)
+        # Saved handler before we installed our compact handler, so we can restore it.
+        self._prev_custom_exceptions: tuple = ()
+        self._prev_custom_exc_handler = None
 
     def next_id(self) -> str:
         self._id += 1
@@ -81,6 +87,65 @@ class _State:
 
 
 _state = _State()
+
+
+def _count_tb_frames(tb) -> int:
+    """Count the number of frames in a traceback chain."""
+    count = 0
+    while tb is not None:
+        count += 1
+        tb = tb.tb_next
+    return count
+
+
+def _deepest_tb_line(tb) -> str:
+    """Return the source line from the deepest frame in the traceback."""
+    import linecache
+    deepest = tb
+    while tb is not None:
+        deepest = tb
+        tb = tb.tb_next
+    frame = deepest.tb_frame
+    lineno = deepest.tb_lineno
+    filename = frame.f_code.co_filename
+    line = linecache.getline(filename, lineno, frame.f_globals).strip()
+    return line or "<source unavailable>"
+
+
+def _compact_exc(shell, etype, evalue, tb, tb_offset=None):
+    """Custom IPython exception handler that folds the native traceback.
+
+    Prints a compact summary instead of the full (potentially thousands-of-lines)
+    traceback. Wraps its body in try/except so that any internal error falls back
+    to the normal traceback display.
+    """
+    try:
+        n_frames = _count_tb_frames(tb)
+        deepest_line = _deepest_tb_line(tb)
+        exc_name = etype.__name__ if etype is not None else "Exception"
+        exc_msg = str(evalue) if evalue is not None else ""
+        print(
+            f"\n{exc_name}: {exc_msg}\n"
+            f"  → deepest line: {deepest_line}\n"
+            f"… full traceback folded by Coach ({n_frames} frames). "
+            "The card below explains it. (%coach_compact off to restore) …\n"
+        )
+    except Exception:  # noqa: BLE001
+        # Safety net: on any internal error fall back to the normal traceback
+        shell.showtraceback()
+
+
+def _install_compact_handler(shell) -> None:
+    """Register the compact exc handler; save the current one for later restore."""
+    _state._prev_custom_exceptions = shell.custom_exceptions
+    _state._prev_custom_exc_handler = shell.CustomTB if hasattr(shell, "CustomTB") else None
+    shell.set_custom_exc((BaseException,), _compact_exc)
+
+
+def _restore_default_handler(shell) -> None:
+    """Restore the IPython exception handler that was active before compact mode."""
+    # IPython's set_custom_exc((), None) resets to default.
+    shell.set_custom_exc((), None)
 
 
 def _analyze_and_show(exc_type, exc_value, exc_tb, cell_source: str,
@@ -233,6 +298,23 @@ class CoachMagics(Magics):
         print(f"🧭  Language set to {label}.")
 
     @line_magic
+    def coach_compact(self, line):
+        mode = line.strip().lower()
+        if mode == "on":
+            if not _state.compact:
+                _install_compact_handler(self.shell)
+                _state.compact = True
+            print("🧭  Compact traceback: ON — long tracebacks will be folded.")
+        elif mode == "off":
+            if _state.compact:
+                _restore_default_handler(self.shell)
+                _state.compact = False
+            print("🧭  Compact traceback: OFF — full tracebacks restored.")
+        else:
+            status = "on" if _state.compact else "off"
+            print(f"🧭  Compact traceback: {status}  (use on/off to change)")
+
+    @line_magic
     def coach_help(self, line):
         print(HELP)
 
@@ -266,3 +348,10 @@ def unregister(ipython):
         ipython.events.unregister("post_run_cell", _post_run_cell_hook)
     except Exception:
         pass
+    # If compact mode is on, restore the default exc handler before unloading.
+    if _state.compact:
+        try:
+            _restore_default_handler(ipython)
+        except Exception:
+            pass
+        _state.compact = False

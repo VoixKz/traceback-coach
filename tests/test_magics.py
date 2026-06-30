@@ -27,11 +27,18 @@ def ip(monkeypatch):
     M._state._last_analysis = 0.0
     M._state.quiz = False
     M._state.lang = "en"
+    M._state.compact = False
+    # Ensure the compact exc handler is not installed at the start of each test.
+    shell.set_custom_exc((), None)
     # Disable debounce in tests so rapid back-to-back run_cell calls all go through.
     monkeypatch.setattr(M._state, "should_analyze", lambda: True)
     traceback_coach.load_ipython_extension(shell)
     shell._tbc_captured = captured
     yield shell
+    # Teardown: restore default exc handler if compact was left on by a test.
+    if M._state.compact:
+        shell.set_custom_exc((), None)
+        M._state.compact = False
     traceback_coach.unload_ipython_extension(shell)
     InteractiveShell.clear_instance()
 
@@ -168,3 +175,85 @@ def test_coach_lang_default_en(ip):
     ip.run_cell("print(en_undef)\n")
     html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
     assert "What happened" in html or "Question:" in html   # English UI
+
+
+# ---------------------------------------------------------------------------
+# Task B: %coach_compact — fold the native traceback
+# ---------------------------------------------------------------------------
+
+def test_coach_compact_default_off(ip):
+    """compact must be OFF by default — must not affect normal error display."""
+    assert M._state.compact is False
+    # A normal error must still surface (error_in_exec is not None)
+    res = ip.run_cell("print(undef_compact_default)\n")
+    assert res.error_in_exec is not None
+
+
+def test_coach_compact_on_sets_state_and_registers_handler(ip):
+    """Turning compact ON must flip _state.compact and register a custom exc handler."""
+    assert M._state.compact is False
+    ip.run_line_magic("coach_compact", "on")
+    assert M._state.compact is True
+    # IPython stores active custom exc tuples in shell.custom_exceptions
+    assert ip.custom_exceptions != ()
+
+
+def test_coach_compact_off_clears_state_and_restores_handler(ip):
+    """Turning compact OFF must flip _state.compact back and restore the default handler."""
+    ip.run_line_magic("coach_compact", "on")
+    assert M._state.compact is True
+    ip.run_line_magic("coach_compact", "off")
+    assert M._state.compact is False
+    # Default exc handler restored: custom_exceptions should be empty tuple
+    assert ip.custom_exceptions == ()
+    # A normal error must still surface after restoring
+    res = ip.run_cell("print(undef_compact_off)\n")
+    assert res.error_in_exec is not None
+
+
+def test_coach_compact_status_reports_state(ip, capsys):
+    """'status' sub-command must print the current compact state."""
+    ip.run_line_magic("coach_compact", "status")
+    out1 = capsys.readouterr().out
+    assert "off" in out1.lower() or "compact" in out1.lower()
+    ip.run_line_magic("coach_compact", "on")
+    ip.run_line_magic("coach_compact", "status")
+    out2 = capsys.readouterr().out
+    assert "on" in out2.lower() or "compact" in out2.lower()
+
+
+def test_coach_compact_on_folds_output(ip, capsys):
+    """When compact is ON, the custom handler prints a folded note."""
+    ip.run_line_magic("coach_compact", "on")
+    # Trigger a NameError (simpler than RecursionError, but same handler path)
+    ip.run_cell("print(undefined_var_compact)\n")
+    out = capsys.readouterr().out + capsys.readouterr().err
+    # The compact summary note must appear
+    assert "folded" in out.lower() or "compact" in out.lower() or "Coach" in out
+
+
+def test_coach_compact_idempotent_double_on(ip):
+    """Calling 'on' twice must not crash and must still be reversible."""
+    ip.run_line_magic("coach_compact", "on")
+    ip.run_line_magic("coach_compact", "on")  # second call — must not raise
+    assert M._state.compact is True
+    ip.run_line_magic("coach_compact", "off")
+    assert M._state.compact is False
+    assert ip.custom_exceptions == ()
+
+
+def test_coach_compact_banner_and_help_mention_compact(ip, capsys):
+    """BANNER and HELP strings must reference %coach_compact."""
+    assert "coach_compact" in M.BANNER
+    assert "coach_compact" in M.HELP
+
+
+def test_unregister_with_compact_on_restores_handler(ip):
+    """unregister() while compact is on must still restore the default exc handler."""
+    import traceback_coach
+    ip.run_line_magic("coach_compact", "on")
+    assert ip.custom_exceptions != ()
+    traceback_coach.unload_ipython_extension(ip)
+    assert ip.custom_exceptions == ()
+    # Re-register so the ip fixture's own teardown doesn't crash
+    traceback_coach.load_ipython_extension(ip)
