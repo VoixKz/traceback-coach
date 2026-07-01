@@ -222,16 +222,24 @@ def test_coach_compact_status_reports_state(ip, capsys):
     assert "on" in out2.lower() or "compact" in out2.lower()
 
 
-def test_coach_compact_on_folds_output(ip, capsys):
-    """When compact is ON, the custom handler prints a compact folded note."""
+def test_coach_compact_collapses_traceback(ip):
+    """When compact is ON, the custom handler renders the full traceback in a collapsible <details>."""
     ip.run_line_magic("coach_compact", "on")
-    capsys.readouterr()  # drain the "ON" confirmation message
-    ip.run_cell("def f(n):\n    return f(n - 1)\nf(3)\n")  # RecursionError, thousands of frames
-    captured = capsys.readouterr()
-    out = captured.out + captured.err
-    # The compact handler must emit a "folded" note instead of thousands of lines.
-    assert "folded" in out.lower()              # the handler's compact note appeared
-    assert out.count("return f(n - 1)") < 50   # NOT thousands of repeated frames
+    ip._tbc_captured.clear()
+    ip.run_cell("def f(n):\n    return f(n - 1)\nf(3)\n")   # RecursionError
+    html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
+    assert "<details" in html and "click to expand" in html   # collapsible
+    assert "RecursionError" in html                            # summary names the error
+    assert "<pre" in html                                       # full traceback inside
+
+
+def test_coach_compact_coach_card_untouched(ip):
+    """With compact ON, a %%coach cell still produces the Coach card (OUR output is untouched)."""
+    ip.run_line_magic("coach_compact", "on")
+    ip._tbc_captured.clear()
+    ip.run_cell_magic("coach", "", "print(compact_undef_var)\n")
+    html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
+    assert "🧭 Coach" in html   # Coach card is still rendered
 
 
 def test_coach_compact_idempotent_double_on(ip):
