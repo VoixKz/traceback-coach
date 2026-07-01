@@ -108,9 +108,12 @@ Check it live with `%coach_llm`. The model is told to **never** output a fix.
 
 The package ships demo + lesson notebooks (also seeded into the deploy lab):
 
+- **`TRY_IT.ipynb` — run it yourself** (hands-on): the whole package end-to-end —
+  collapsible traceback (fold the red wall), recursion-as-a-loop, progressive fade,
+  stats, quiz, bilingual EN/中文, LLM, lessons. *Restart Kernel & Run All Cells.*
 - **`00_showcase.ipynb` — the full feature tour** (start here): anatomy card, causal
   diagram, recursion-as-a-loop, progressive fade, stats, quiz, bilingual EN/中文,
-  LLM-personalized questions, compact tracebacks, watch mode, lessons.
+  LLM-personalized questions, collapsible tracebacks, watch mode, lessons.
 - `demo.ipynb` — basic tour (nested calls, recursion, watch mode)
 - `demo_02_features.ipynb` — fade before/after, stats, quiz, language, LLM toggle
 - `lesson_01_names_and_types`, `lesson_02_lists_and_dicts`,
@@ -143,7 +146,7 @@ traceback_coach/
   `{message}`, `{error_type}`, `{line_no}`.
 - **Add a language:** add a `FAMILIES_<lang>` + a `LABELS["<lang>"]` map and a
   `lookup(error_type, lang)` branch; thread the lang code through `%coach_lang`.
-- **Run tests:** `pip install -e ".[dev]" && pytest -v` (84 tests).
+- **Run tests:** `pip install -e ".[dev]" && pytest -v` (112 tests).
 - **Build & verify in a clean env:** `python -m build`, then install the wheel
   in a fresh venv and import (two-venv pattern).
 
