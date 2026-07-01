@@ -32,7 +32,7 @@ BANNER = textwrap.dedent("""\
     •  %coach_llm        LLM status / on / off (personalized vs template questions)
     •  %coach_quiz on   guess the error type before the answer (active recall)
     •  %coach_lang en|zh  set explanation language (default: en)
-    •  %coach_compact on  fold the native traceback to a short summary (opt-in)
+    •  %coach_compact on  collapse the Python traceback (click to expand)
     •  %coach_help      show help
 """)
 
@@ -49,7 +49,7 @@ HELP = textwrap.dedent("""\
     %coach_llm        LLM status / on / off (personalized vs template questions)
     %coach_quiz on    guess the error type before the answer (active recall)
     %coach_lang en|zh  set explanation language (default: en; status to check)
-    %coach_compact on  fold the native traceback to a short summary (on/off/status)
+    %coach_compact on  collapse the Python traceback (click to expand) (on/off/status)
     %coach_help       This help
 
     The coach never shows the fix — it teaches you to read the error yourself.
@@ -112,21 +112,34 @@ def _deepest_tb_line(tb) -> str:
 def _compact_exc(shell, etype, evalue, tb, tb_offset=None):
     """Custom IPython exception handler that folds the native traceback.
 
-    Prints a compact summary instead of the full (potentially thousands-of-lines)
-    traceback. Wraps its body in try/except so that any internal error falls back
-    to the normal traceback display.
+    Renders the full traceback inside a collapsible <details> element instead of
+    dumping thousands of lines to stdout. Wraps its body in try/except so that any
+    internal error falls back to the normal traceback display.
     """
     try:
-        n_frames = _count_tb_frames(tb)
-        deepest_line = _deepest_tb_line(tb)
-        exc_name = etype.__name__ if etype is not None else "Exception"
-        exc_msg = str(evalue) if evalue is not None else ""
-        print(
-            f"\n{exc_name}: {exc_msg}\n"
-            f"  → deepest line: {deepest_line}\n"
-            f"… full traceback folded by Coach ({n_frames} frames). "
-            "The card below explains it. (%coach_compact off to restore) …\n"
+        import html as _html
+        import traceback as _tb
+        n = _count_tb_frames(tb)
+        full = "".join(_tb.format_exception(etype, evalue, tb))
+        ename = getattr(etype, "__name__", str(etype))
+        # Truncate the RAW message first, then escape — escaping before
+        # truncating can slice an entity (e.g. "&amp;" -> "&am") and emit
+        # broken HTML in the summary line.
+        raw = str(evalue)
+        if len(raw) > 140:
+            raw = raw[:140] + "…"
+        msg = _html.escape(raw)
+        html = (
+            "<details style=\"margin:4px 0\">"
+            "<summary style=\"cursor:pointer;color:#991b1b;font-family:monospace;font-size:13px\">"
+            f"▸ <strong>{_html.escape(ename)}</strong>: {msg} "
+            f"&middot; full Python traceback ({n} frames) — click to expand</summary>"
+            "<pre style=\"background:#fef2f2;border-left:3px solid #ef4444;"
+            "padding:8px;overflow:auto;font-size:12px;margin:4px 0\">"
+            f"{_html.escape(full)}</pre>"
+            "</details>"
         )
+        display(HTML(html))
     except Exception:  # Exception (not BaseException): never swallow Ctrl-C / SystemExit  # noqa: BLE001
         # Safety net: on any internal error fall back to the normal traceback
         shell.showtraceback()
@@ -304,7 +317,7 @@ class CoachMagics(Magics):
             if not _state.compact:
                 _install_compact_handler(self.shell)
                 _state.compact = True
-            print("🧭  Compact traceback: ON — folds ALL errors in this kernel until you run %coach_compact off.")
+            print("🧭  Compact traceback: ON — Python tracebacks are collapsed (click to expand). The Coach card is untouched.")
         elif mode == "off":
             if _state.compact:
                 _restore_default_handler(self.shell)
