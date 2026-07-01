@@ -108,14 +108,14 @@ Check it live with `%coach_llm`. The model is told to **never** output a fix.
 
 The package ships demo + lesson notebooks (also seeded into the deploy lab):
 
-- **`TRY_IT.ipynb` — run it yourself** (hands-on): the whole package end-to-end —
-  collapsible traceback (fold the red wall), recursion-as-a-loop, progressive fade,
-  stats, quiz, bilingual EN/中文, LLM, lessons. *Restart Kernel & Run All Cells.*
-- **`00_showcase.ipynb` — the full feature tour** (start here): anatomy card, causal
+- **`00_start_here.ipynb` — run it yourself** (start here, hands-on): the whole
+  package end-to-end — collapsible traceback (fold the red wall), recursion-as-a-loop,
+  progressive fade, stats, quiz, bilingual EN/中文, LLM, lessons. *Restart Kernel & Run All Cells.*
+- **`01_showcase.ipynb` — the full feature tour**: anatomy card, causal
   diagram, recursion-as-a-loop, progressive fade, stats, quiz, bilingual EN/中文,
   LLM-personalized questions, collapsible tracebacks, watch mode, lessons.
-- `demo.ipynb` — basic tour (nested calls, recursion, watch mode)
-- `demo_02_features.ipynb` — fade before/after, stats, quiz, language, LLM toggle
+- `02_basics_tour.ipynb` — basic tour (nested calls, recursion, watch mode)
+- `03_features_tour.ipynb` — fade before/after, stats, quiz, language, LLM toggle
 - `lesson_01_names_and_types`, `lesson_02_lists_and_dicts`,
   `lesson_03_functions_and_recursion`, `lesson_04_values_and_math` — short
   CS1302 lessons, each with a broken cell to read and fix.

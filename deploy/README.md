@@ -235,7 +235,7 @@ sudo ss -tlnp | grep -E ':8888|:443|:80' || echo "OK: nothing listening on host"
 Once the tunnel is registered, browse to **`https://lab.<your-domain>`**:
 1. Cloudflare Access prompts for your email (OTP or Google SSO).
 2. Then JupyterLab's password page (the argon2 password you set).
-3. You land in `/lab` with `demo.ipynb` available.
+3. You land in `/lab` with the notebooks available (`00_start_here.ipynb` first).
 
 ---
 
