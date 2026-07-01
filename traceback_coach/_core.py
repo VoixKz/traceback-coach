@@ -222,15 +222,6 @@ def _chain_steps(chain: List[Frame]):
     return steps
 
 
-def _chain_nodes(chain: List[Frame]):
-    """(node_id, mermaid_label) pairs for the call chain — code shown per node."""
-    out = []
-    for idx, (head, code) in enumerate(_chain_steps(chain)):
-        h, c = _mm_escape(head), _mm_escape(code)
-        out.append((f"F{idx}", f"{h}<br/>{c}" if c else h))
-    return out
-
-
 def _detect_recursion(frames: List[Frame]):
     """Detect recursion in a frame list.
 
