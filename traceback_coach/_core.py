@@ -452,7 +452,7 @@ def llm_question(parsed: ParsedError, cell_source: str, lang: str = "en") -> str
     """One short Socratic question from an OpenAI-compatible API.
 
     Returns "" when no API key is set or on any failure — the caller then
-    uses the deterministic template. Honours DIVE's LiteLLM gateway via
+    uses the deterministic template. Honours any OpenAI-compatible gateway via
     OPENAI_BASE_URL. NEVER asks the model for a fix (system prompt forbids it).
     When lang=="zh", instructs the model to reply in Traditional Chinese (zh-HK).
     """

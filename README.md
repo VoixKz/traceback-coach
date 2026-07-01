@@ -8,11 +8,28 @@ question — so students learn to *read errors themselves* and not repeat them.
 **It never shows the fix.** The goal is independence: read the error, understand
 the cause, fix it yourself.
 
-Built for the [DIVE](https://github.com/dive4dec) virtual learning environment
-(CityU CS1302). Works fully offline; an LLM is optional and only personalizes
-the guiding question.
+> *"An expert is a person who has made all the mistakes that can be made in a very
+> narrow field."* — Niels Bohr
 
----
+Works fully **offline** — no account, no network required. An LLM is optional and
+only personalizes the guiding question.
+
+## Features
+
+| Feature | What it does |
+|---|---|
+| **`%%coach`** cell magic | Explain the error in a single cell |
+| **`%coach_watch on`** | Auto-explain every failing cell the moment it breaks |
+| **Anatomy card** | Plain translation + causal diagram + worked example + one question |
+| **Causal diagram** | Mermaid flowchart of the call chain — **recursion drawn as a loop** |
+| **Never the fix** | Only a guiding question; *you* fix it yourself |
+| **Progressive fade** | Full card → brief → minimal nudge as you repeat an error type |
+| **Quiz / active recall** | Guess the error type before the analysis is revealed |
+| **Bilingual** | The whole card in English or Traditional Chinese (zh-HK) |
+| **Collapsible traceback** | Fold the giant red Python traceback into a click-to-expand line |
+| **Error stats** | See which error types you hit most this session |
+| **Lessons on demand** | Open a lesson for any error family — no error needed |
+| **Offline diagrams** | Mermaid is vendored — renders with no network |
 
 ## Install
 
@@ -30,16 +47,44 @@ Then in a notebook:
 
 ```python
 %%coach
-print(total)        # NameError → the Coach explains it (no fix given)
+print(total)        # `total` was never defined
 ```
 
-Or watch every cell automatically:
+Instead of a wall of red, the Coach shows an **anatomy card** — something like:
+
+> 🔴 **What happened** — the name `total` is used before it's defined; Python has
+> no value bound to it yet (`NameError: name 'total' is not defined`).
+> 📊 **Why it breaks** — a diagram tracing the cell down to the failing line.
+> 🏷️ **NameError** · 🔎 *a NameError means a name is used before it exists — check
+> for a typo, or whether you assigned it earlier.*
+> ❓ **Question:** *Where should `total` receive its first value, before this line?*
+
+…and never the corrected code. Or watch every cell automatically:
 
 ```python
 %coach_watch on
 xs = [1, 2, 3]
 xs[5]               # IndexError is explained the moment it happens
 ```
+
+## How it works
+
+```
+┌───────────────┐   ┌───────────────┐   ┌──────────────────────────┐   ┌───────────────┐
+│ Cell raises   │ → │ Parse the     │ → │ Build the card:          │ → │ Render inline │
+│ (type, value, │   │ traceback     │   │  · plain translation     │   │ in the        │
+│  frames)      │   │ (drop noise   │   │  · causal diagram        │   │ notebook —    │
+│               │   │  frames)      │   │  · worked example        │   │ never a fix   │
+│               │   │               │   │  · ONE guiding question  │   │               │
+└───────────────┘   └───────────────┘   └──────────────────────────┘   └───────────────┘
+```
+
+The card is built to teach, not to solve. On every error the engine:
+
+1. Translates the traceback into one plain sentence.
+2. Draws **where** it broke — recursion becomes a visible loop, not a 1000-line wall.
+3. Shows the same error on minimal code, plus how to avoid it next time.
+4. Asks exactly **one** guiding question — never the corrected code.
 
 ## Commands
 
@@ -55,6 +100,7 @@ xs[5]               # IndexError is explained the moment it happens
 | `%coach_quiz on` / `off` | **active recall** — guess the error type before revealing the analysis |
 | `%coach_lang en\|zh` | explanation language: English or **Traditional Chinese (zh-HK)** |
 | `%coach_llm` / `on` / `off` | LLM status / toggle personalized vs template questions |
+| `%coach_compact on` / `off` | fold the red Python traceback into a click-to-expand line |
 | `%coach_help`, `%coach_off` | help / stop watching |
 
 ## The anatomy card
@@ -63,9 +109,10 @@ On any error the Coach shows:
 
 - 🔴 **What happened** — the traceback in one plain sentence
 - 📊 **Why it breaks** — a Mermaid flowchart of the call chain *with the code at
-  each step*, down to the line that broke (recursion is collapsed to `f ×998`,
-  mutual recursion is capped with `… N more calls …`). Falls back to a pure
-  HTML/CSS diagram if Mermaid can't render.
+  each step*, down to the line that broke. **Recursion is drawn as a loop** — a
+  self-loop labelled `calls itself ×N` for direct recursion, or a cycle that
+  `loops back ×N` for mutual recursion. Falls back to a pure HTML/CSS diagram if
+  Mermaid can't render.
 - 📍 **Where** — the line + offending token
 - 🏷️ **Error family** + 🔎 *how to read this kind of error yourself*
 - 📖 **Worked example** (collapsible) — the same error on minimal code + how to
@@ -87,26 +134,29 @@ ModuleNotFoundError/ImportError, RecursionError, UnboundLocalError`.
 - **Bilingual** (`%coach_lang zh`) — the whole card (translation, family, “read
   it yourself”, worked example, question, UI labels) in Traditional Chinese for
   Hong Kong learners. English is the default and unchanged.
+- **Collapsible traceback** (`%coach_compact on`) — fold the giant red Python
+  traceback into one click-to-expand line; the Coach card stays untouched.
 - **Personalized questions** — with an LLM configured, the guiding question
   references the student's actual variables (and is asked in the chosen
   language); without one, a built-in template is used. Either way, never a fix.
 
 ### Optional: personalized questions via an LLM
 
-Set an OpenAI-compatible endpoint (e.g. the DIVE LiteLLM gateway). With nothing
-set, everything still works on templates.
+Set **any** OpenAI-compatible endpoint. With nothing set, everything still works
+on templates.
 
 | Variable | Purpose |
 |---|---|
 | `TRACEBACK_COACH_LLM_API_KEY` / `OPENAI_API_KEY` / `DEEPSEEK_API_KEY` | API key (any one) |
-| `OPENAI_BASE_URL` / `TRACEBACK_COACH_LLM_BASE_URL` | endpoint (e.g. DIVE LiteLLM gateway) |
+| `OPENAI_BASE_URL` / `TRACEBACK_COACH_LLM_BASE_URL` | endpoint (any OpenAI-compatible gateway) |
 | `OPENAI_MODEL` / `TRACEBACK_COACH_LLM_MODEL` | model id (default `deepseek-chat`) |
 
 Check it live with `%coach_llm`. The model is told to **never** output a fix.
 
 ## Notebooks
 
-The package ships demo + lesson notebooks (also seeded into the deploy lab):
+The package ships demo + lesson notebooks — ready to run, start with
+`00_start_here.ipynb`:
 
 - **`00_start_here.ipynb` — run it yourself** (start here, hands-on): the whole
   package end-to-end — collapsible traceback (fold the red wall), recursion-as-a-loop,
@@ -118,14 +168,7 @@ The package ships demo + lesson notebooks (also seeded into the deploy lab):
 - `03_features_tour.ipynb` — fade before/after, stats, quiz, language, LLM toggle
 - `lesson_01_names_and_types`, `lesson_02_lists_and_dicts`,
   `lesson_03_functions_and_recursion`, `lesson_04_values_and_math` — short
-  CS1302 lessons, each with a broken cell to read and fix.
-
-## Deploy as a shared lab
-
-`deploy/` contains an always-on, hardened setup (Docker + Cloudflare Tunnel +
-optional Access, no inbound ports, hashed password) so a class can reach the lab
-on your own domain. See **[deploy/README.md](deploy/README.md)** and
-`deploy/bootstrap.sh` for the one-command setup.
+  beginner Python lessons, each with a broken cell to read and fix.
 
 ## Developer guide
 

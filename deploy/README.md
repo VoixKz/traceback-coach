@@ -174,8 +174,7 @@ unless the value begins with `argon2:` (i.e. it rejects a pasted plaintext).
 ## 4. Clone the repo and configure secrets
 
 The GitHub repo is **private**; authenticate with `gh auth login` or a deploy key/PAT.
-Use the actual remote for your fork (the package metadata references
-`github.com/dive4dec/jupyter-hermes-personalities`; substitute your real remote):
+Use your own repo remote:
 
 ```bash
 sudo apt-get install -y git
