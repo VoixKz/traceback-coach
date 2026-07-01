@@ -233,6 +233,18 @@ def test_coach_compact_collapses_traceback(ip):
     assert "<pre" in html                                       # full traceback inside
 
 
+def test_coach_compact_escapes_html_in_message(ip):
+    """A message containing <, >, & must be HTML-escaped, not injected raw."""
+    ip.run_line_magic("coach_compact", "on")
+    ip._tbc_captured.clear()
+    ip.run_cell("raise ValueError('bad <tag> & \"quote\" here')\n")
+    html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
+    # the special chars appear escaped in the summary, never as a raw tag
+    assert "&lt;tag&gt;" in html
+    assert "<tag>" not in html
+    assert "&amp;" in html
+
+
 def test_coach_compact_coach_card_untouched(ip):
     """With compact ON, a %%coach cell still produces the Coach card (OUR output is untouched)."""
     ip.run_line_magic("coach_compact", "on")

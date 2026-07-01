@@ -122,9 +122,13 @@ def _compact_exc(shell, etype, evalue, tb, tb_offset=None):
         n = _count_tb_frames(tb)
         full = "".join(_tb.format_exception(etype, evalue, tb))
         ename = getattr(etype, "__name__", str(etype))
-        msg = _html.escape(str(evalue))
-        if len(msg) > 140:
-            msg = msg[:140] + "…"
+        # Truncate the RAW message first, then escape — escaping before
+        # truncating can slice an entity (e.g. "&amp;" -> "&am") and emit
+        # broken HTML in the summary line.
+        raw = str(evalue)
+        if len(raw) > 140:
+            raw = raw[:140] + "…"
+        msg = _html.escape(raw)
         html = (
             "<details style=\"margin:4px 0\">"
             "<summary style=\"cursor:pointer;color:#991b1b;font-family:monospace;font-size:13px\">"
