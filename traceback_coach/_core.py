@@ -85,6 +85,17 @@ def parse_traceback(exc_type, exc_value, exc_tb, cell_source: str = "") -> Parse
         else:
             frames = []
 
+        # Drop synthetic Python scopes (<genexpr>, <listcomp>, <setcomp>,
+        # <dictcomp>, <lambda>) — they show as confusing intermediate nodes.
+        # Guard: never empty the list. When the deepest frame is synthetic,
+        # drop it so the last non-synthetic frame becomes the break frame
+        # (its line_no/source_line are already filled from cell_source above).
+        _SYNTHETIC = {"<genexpr>", "<listcomp>", "<setcomp>", "<dictcomp>", "<lambda>"}
+        if frames:
+            filtered = [f for f in frames if f.location not in _SYNTHETIC]
+            if filtered:  # keep the filtered list only if it's non-empty
+                frames = filtered
+
         # Fill any missing source lines from the cell text (linecache may be
         # empty for %%coach's nested run) so each node can show its code.
         for f in frames:
@@ -110,11 +121,57 @@ def _fill(template: str, parsed: ParsedError) -> str:
 
 
 def _mm_escape(text: str) -> str:
-    """Make text safe inside a Mermaid "..." node label."""
+    """HTML-escape user text for Mermaid htmlLabels inside double-quoted ["..."] nodes.
+
+    Replaces & < > " with their HTML entities so real code renders correctly.
+    Newlines become spaces. The <br/> markup you add yourself is literal (not escaped here).
+    """
     return (
-        text.replace('"', "'").replace("<", "(").replace(">", ")")
-        .replace("\n", " ").strip()
+        text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+            .replace("\n", " ")
+            .strip()
     )
+
+
+def _display_code(src: str) -> str:
+    """Strip trailing # comment (quote-aware), collapse whitespace, truncate to 80 chars.
+
+    A # inside a string literal is NOT treated as a comment delimiter.
+    Examples:
+      'return f(x)   # comment' -> 'return f(x)'
+      'print("a # b")'          -> 'print("a # b")'
+      (anything longer than 80 chars) -> first 79 chars + '…'
+    """
+    # Walk the string char-by-char, tracking string context, to find the first
+    # real (non-string) # character.
+    in_str: Optional[str] = None  # current string delimiter (' or ")
+    i = 0
+    comment_start = -1
+    while i < len(src):
+        ch = src[i]
+        if in_str is None:
+            if ch in ('"', "'"):
+                in_str = ch
+            elif ch == "#":
+                comment_start = i
+                break
+        else:
+            if ch == "\\" :
+                i += 1  # skip escaped char
+            elif ch == in_str:
+                in_str = None
+        i += 1
+
+    if comment_start >= 0:
+        src = src[:comment_start]
+
+    src = src.strip()
+    if len(src) > 80:
+        src = src[:79] + "…"
+    return src
 
 
 _MAX_CHAIN_NODES = 6
@@ -160,9 +217,7 @@ def _chain_steps(chain: List[Frame]):
             head += f" (line {fr.line_no})"
         if count > 1:
             head += f" x{count}"
-        code = (fr.source_line or "").strip()
-        if len(code) > 60:
-            code = code[:57] + "..."
+        code = _display_code((fr.source_line or "").strip())
         steps.append((head, code))
     return steps
 
@@ -214,130 +269,184 @@ def _detect_recursion(frames: List[Frame]):
         count = location_counts[(fr.location, fr.line_no)]
         return ("direct", fr, count)
 
-    # Mutual recursion: multiple distinct repeating locations — cap at 3.
-    ordered = repeating_frames[:3]
+    # Mutual recursion: multiple distinct repeating locations — cap at 8.
+    ordered = repeating_frames[:8]
     total = len(frames)
     return ("mutual", ordered, total)
 
 
+_CLASSDEF_LINES = """\
+  classDef cf_start fill:#dcfce7,stroke:#16a34a,color:#14532d
+  classDef cf_frame fill:#eef2ff,stroke:#6366f1,color:#1e1b4b
+  classDef cf_break fill:#fef9c3,stroke:#f59e0b,color:#713f12
+  classDef cf_boom fill:#fee2e2,stroke:#ef4444,color:#7f1d1d"""
+
+
+def _node_label(fr: Frame) -> str:
+    """Build the inner text of a mermaid node for one frame (HTML-escaped)."""
+    loc = _mm_escape(fr.location)
+    line_part = f" · line {fr.line_no}" if fr.line_no else ""
+    code = _mm_escape(_display_code((fr.source_line or "").strip()))
+    head = f"{loc}{line_part}"
+    return f"{head}<br/>{code}" if code else head
+
+
 def build_mermaid(parsed: ParsedError, family: ErrorFamily) -> str:
-    """Build a Mermaid `graph TD` showing the causal chain to the break."""
+    """Build a Mermaid `flowchart TD` showing the causal chain to the break."""
     cause = _fill(family.cause_phrase, parsed)
-    x_label = f'💥 {parsed.error_type}<br/>{_mm_escape(cause)}'
-    style_x = "  style X fill:#fee2e2,stroke:#ef4444,color:#991b1b"
+    cause_escaped = _mm_escape(cause)
+    error_type_escaped = _mm_escape(parsed.error_type)
+    x_label = f"💥 {error_type_escaped}<br/>{cause_escaped}"
 
     # Check for recursion across all frames (chain + break frame).
     rec_kind, rec_data, rec_count = _detect_recursion(parsed.frames)
 
     if rec_kind == "direct":
         fr = rec_data
-        loc_label = _mm_escape(f"{fr.location} (line {fr.line_no})" if fr.line_no else fr.location)
-        code_part = _mm_escape((fr.source_line or "").strip())
-        node_label = f"{loc_label}<br/>{code_part}" if code_part else loc_label
-        nodes = [
-            '  S["your code runs"]',
-            f'  R["{node_label}"]',
-            f'  X["{x_label}"]',
-        ]
-        edges = [
+        node_label = _node_label(fr)
+        lines = [
+            "flowchart TD",
+            '  S(["▶ your code runs"]):::cf_start',
+            f'  R["{node_label}"]:::cf_break',
+            f'  X(["{x_label}"]):::cf_boom',
             "  S --> R",
-            f'  R -->|"calls itself ×{rec_count}"| R',
-            "  R -->|breaks| X",
+            f'  R -. "calls itself ×{rec_count}" .-> R',
+            "  R ==>|breaks here| X",
+            _CLASSDEF_LINES,
         ]
-        return "graph TD\n" + "\n".join(nodes + edges) + "\n" + style_x
+        return "\n".join(lines)
 
     if rec_kind == "mutual":
-        ordered_frames = rec_data
-        nodes = ['  S["your code runs"]']
-        cycle_node_ids = []
+        ordered_frames = rec_data  # up to 8, first-seen order
+        lines = [
+            "flowchart TD",
+            '  S(["▶ your code runs"]):::cf_start',
+        ]
+        cycle_ids: List[str] = []
         for idx, fr in enumerate(ordered_frames):
-            nid = f"M{idx}"
-            cycle_node_ids.append(nid)
-            loc_label = _mm_escape(
-                f"{fr.location} (line {fr.line_no})" if fr.line_no else fr.location
-            )
-            code_part = _mm_escape((fr.source_line or "").strip())
-            label = f"{loc_label}<br/>{code_part}" if code_part else loc_label
-            nodes.append(f'  {nid}["{label}"]')
-        nodes.append(f'  X["{x_label}"]')
+            nid = f"C{idx}"
+            cycle_ids.append(nid)
+            label = _node_label(fr)
+            # All cycle nodes are cf_break (they all participate in the break)
+            lines.append(f'  {nid}["{label}"]:::cf_break')
+        lines.append(f'  X(["{x_label}"]):::cf_boom')
 
-        edges = [f"  S --> {cycle_node_ids[0]}"]
-        for i in range(len(cycle_node_ids) - 1):
-            edges.append(f"  {cycle_node_ids[i]} --> {cycle_node_ids[i + 1]}")
-        # Back-edge from last to first to show the cycle
-        edges.append(
-            f'  {cycle_node_ids[-1]} -->|"loops back ×{rec_count}"| {cycle_node_ids[0]}'
-        )
-        edges.append(f"  {cycle_node_ids[-1]} -->|breaks| X")
-        return "graph TD\n" + "\n".join(nodes + edges) + "\n" + style_x
+        lines.append(f"  S --> {cycle_ids[0]}")
+        for i in range(len(cycle_ids) - 1):
+            lines.append(f"  {cycle_ids[i]} --> {cycle_ids[i + 1]}")
+        # Back-edge from last to FIRST (C0) — the key fix for long cycles
+        lines.append(f'  {cycle_ids[-1]} -. "loops back ×{rec_count}" .-> C0')
+        lines.append(f"  {cycle_ids[-1]} ==>|breaks here| X")
+        lines.append(_CLASSDEF_LINES)
+        return "\n".join(lines)
 
-    # Non-recursive: original linear chain rendering.
-    line_label = f"line {parsed.line_no}" if parsed.line_no else "your code"
-    src = _mm_escape(parsed.source_line) or "the failing line"
+    # Non-recursive: clean linear flowchart.
+    chain = parsed.frames[:-1] if len(parsed.frames) > 1 else []
+    break_frame = parsed.frames[-1] if parsed.frames else None
 
-    nodes = ['  S["your code runs"]']
-    edges: List[str] = []
+    lines = [
+        "flowchart TD",
+        '  S(["▶ your code runs"]):::cf_start',
+    ]
     prev = "S"
 
-    chain = parsed.frames[:-1] if len(parsed.frames) > 1 else []
-    for nid, label in _chain_nodes(chain):
-        nodes.append(f'  {nid}["{label}"]')
-        edges.append(f"  {prev} --> {nid}")
+    for idx, fr in enumerate(chain):
+        nid = f"N{idx}"
+        label = _node_label(fr)
+        lines.append(f'  {nid}["{label}"]:::cf_frame')
+        lines.append(f"  {prev} --> {nid}")
         prev = nid
 
-    nodes.append(f'  L["{line_label}: {src}"]')
-    edges.append(f"  {prev} --> L")
-    nodes.append(f'  X["{x_label}"]')
-    edges.append("  L -->|breaks| X")
+    # Break (deepest) frame
+    if break_frame is not None:
+        label = _node_label(break_frame)
+        lines.append(f'  N{len(chain)}["{label}"]:::cf_break')
+        lines.append(f"  {prev} --> N{len(chain)}")
+        prev = f"N{len(chain)}"
 
-    return (
-        "graph TD\n"
-        + "\n".join(nodes + edges)
-        + "\n" + style_x
-    )
+    lines.append(f'  X(["{x_label}"]):::cf_boom')
+    lines.append(f"  {prev} ==>|breaks here| X")
+    lines.append(_CLASSDEF_LINES)
+    return "\n".join(lines)
 
 
 def build_fallback_diagram(parsed: ParsedError, family: ErrorFamily) -> str:
     """Pure HTML/CSS flow fallback when Mermaid can't render.
 
-    Renders the full call chain top-to-bottom — each call with its own code
-    line — down to the line that broke, so the student sees where the bad value
-    started and how it flowed to the break.
+    Renders the call chain top-to-bottom — each call with its code line (via
+    _display_code) — down to the line that broke. For recursive chains, shows
+    a compact recursion note instead of listing thousands of frames.
     """
     esc = _html.escape
     cause = _fill(family.cause_phrase, parsed)
     line_label = f"line {parsed.line_no}" if parsed.line_no else "your code"
-    src = parsed.source_line.strip() or "the failing line"
+    src = _display_code(parsed.source_line.strip()) or "the failing line"
 
     box = (
         "padding:6px 10px;margin:2px 0;border-radius:6px;border:1px solid #cbd5e1;"
         "background:#f8fafc;font-size:13px"
     )
     break_box = (
+        "padding:6px 10px;margin:2px 0;border-radius:6px;border:1px solid #f59e0b;"
+        "background:#fef9c3;color:#713f12;font-size:13px"
+    )
+    boom_box = (
         "padding:6px 10px;margin:2px 0;border-radius:6px;border:1px solid #ef4444;"
-        "background:#fee2e2;color:#991b1b;font-size:13px"
+        "background:#fee2e2;color:#7f1d1d;font-size:13px"
+    )
+    note_box = (
+        "padding:6px 10px;margin:2px 0;border-radius:6px;border:1px solid #6366f1;"
+        "background:#eef2ff;color:#1e1b4b;font-size:13px"
     )
     code_style = "font-family:monospace;color:#0f172a"
     down = "<div style='color:#94a3b8;margin:0 0 0 10px'>&darr;</div>"
 
-    rows = ["<div style='margin:8px 0'>",
-            f"<div style='{box}'>your code runs</div>", down]
+    rec_kind, rec_data, rec_count = _detect_recursion(parsed.frames)
 
-    chain = parsed.frames[:-1] if len(parsed.frames) > 1 else []
-    for head, code in _chain_steps(chain):
-        inner = f"<strong>{esc(head)}</strong>"
+    rows = ["<div style='margin:8px 0'>",
+            f"<div style='{box}'>▶ your code runs</div>", down]
+
+    if rec_kind == "direct":
+        fr = rec_data
+        loc = esc(fr.location)
+        code = esc(_display_code((fr.source_line or "").strip()))
+        inner = f"<strong>{loc}</strong>"
         if code:
-            inner += f"<br/><span style='{code_style}'>{esc(code)}</span>"
+            inner += f"<br/><span style='{code_style}'>{code}</span>"
         rows.append(f"<div style='{box}'>{inner}</div>")
         rows.append(down)
+        rows.append(f"<div style='{note_box}'>↻ calls itself ×{rec_count}</div>")
+        rows.append(down)
+    elif rec_kind == "mutual":
+        ordered_frames = rec_data
+        for fr in ordered_frames:
+            loc = esc(fr.location)
+            code = esc(_display_code((fr.source_line or "").strip()))
+            inner = f"<strong>{loc}</strong>"
+            if code:
+                inner += f"<br/><span style='{code_style}'>{code}</span>"
+            rows.append(f"<div style='{box}'>{inner}</div>")
+            rows.append(down)
+        first_func = esc(ordered_frames[0].location)
+        rows.append(f"<div style='{note_box}'>↻ loops back to {first_func} ×{rec_count}</div>")
+        rows.append(down)
+    else:
+        chain = parsed.frames[:-1] if len(parsed.frames) > 1 else []
+        for head, code in _chain_steps(chain):
+            inner = f"<strong>{esc(head)}</strong>"
+            if code:
+                inner += f"<br/><span style='{code_style}'>{esc(code)}</span>"
+            rows.append(f"<div style='{box}'>{inner}</div>")
+            rows.append(down)
 
+    # Break frame
     rows.append(
-        f"<div style='{box}'><strong>{esc(line_label)}</strong>"
+        f"<div style='{break_box}'><strong>{esc(line_label)}</strong>"
         f"<br/><span style='{code_style}'>{esc(src)}</span></div>"
     )
     rows.append(down)
     rows.append(
-        f"<div style='{break_box}'>💥 <strong>{esc(parsed.error_type)}</strong>: {esc(cause)}</div>"
+        f"<div style='{boom_box}'>💥 <strong>{esc(parsed.error_type)}</strong>: {esc(cause)}</div>"
     )
     rows.append("</div>")
     return "".join(rows)
