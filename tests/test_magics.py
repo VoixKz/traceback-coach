@@ -24,21 +24,19 @@ def ip(monkeypatch):
     M._state.pending_fix = False
     M._state.stats = {}
     M._state.level_override = "auto"
-    M._state._last_analysis = 0.0
     M._state.quiz = False
     M._state.lang = "en"
     M._state.compact = False
-    # Ensure the compact exc handler is not installed at the start of each test.
+    # Ensure no custom exc handler is installed at the start of each test.
     shell.set_custom_exc((), None)
-    # Disable debounce in tests so rapid back-to-back run_cell calls all go through.
-    monkeypatch.setattr(M._state, "should_analyze", lambda: True)
     traceback_coach.load_ipython_extension(shell)
     shell._tbc_captured = captured
     yield shell
-    # Teardown: restore default exc handler if compact was left on by a test.
-    if M._state.compact:
+    # Teardown: restore default exc handler if quiz/compact was left on by a test.
+    if M._state.compact or M._state.quiz:
         shell.set_custom_exc((), None)
         M._state.compact = False
+        M._state.quiz = False
     traceback_coach.unload_ipython_extension(shell)
     InteractiveShell.clear_instance()
 
@@ -268,6 +266,81 @@ def test_coach_compact_banner_and_help_mention_compact(ip, capsys):
     """BANNER and HELP strings must reference %coach_compact."""
     assert "coach_compact" in M.BANNER
     assert "coach_compact" in M.HELP
+
+
+# ---------------------------------------------------------------------------
+# Skip bug: consecutive errors were dropped by a time debounce; now deduped
+# by exception identity instead.
+# ---------------------------------------------------------------------------
+
+def test_watch_explains_consecutive_distinct_errors(ip):
+    """Two DIFFERENT errors run back-to-back must BOTH get a card (no skip)."""
+    ip.run_line_magic("coach_watch", "on")
+    ip._tbc_captured.clear()
+    ip.run_cell("[][0]\n")            # IndexError
+    ip.run_cell("{}['missing']\n")    # KeyError
+    html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
+    assert "IndexError" in html
+    assert "KeyError" in html
+
+
+def test_coach_magic_with_watch_shows_card_once(ip):
+    """`%%coach` while watching must not double-explain the same exception."""
+    ip.run_line_magic("coach_watch", "on")
+    ip._tbc_captured.clear()
+    ip.run_cell_magic("coach", "", "undef_double_var + 1\n")   # NameError
+    html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
+    assert html.count("🧭 Coach") == 1
+
+
+def test_coach_explain_reexplains_same_error(ip):
+    """%coach_explain must re-render the last error even though it's the same
+    exception object (force bypasses the identity dedup)."""
+    ip.run_line_magic("coach_watch", "on")
+    ip.run_cell("undef_explain_var\n")   # NameError -> analyzed, last_error set
+    ip._tbc_captured.clear()
+    ip.run_line_magic("coach_explain", "")
+    html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
+    assert "🧭 Coach" in html
+
+
+# ---------------------------------------------------------------------------
+# Quiz bug: the error type leaked via the traceback before "reveal". Quiz mode
+# now folds the traceback with the type redacted from the visible summary.
+# ---------------------------------------------------------------------------
+
+def test_coach_quiz_hides_error_type_until_expand(ip):
+    """With quiz ON, the type must NOT appear in the visible <summary>, only in
+    the collapsed body (revealed on expand)."""
+    import re
+    ip.run_line_magic("coach_quiz", "on")
+    ip._tbc_captured.clear()
+    ip.run_cell("undefined_quiz_var + 1\n")   # NameError
+    html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
+    m = re.search(r"<summary[^>]*>(.*?)</summary>", html, re.S)
+    assert m, "expected a collapsed <details> summary while quiz is on"
+    assert "NameError" not in m.group(1)       # type hidden in the visible summary
+    assert "NameError" in html                 # but present in the hidden body
+
+
+def test_coach_quiz_syncs_exc_handler(ip):
+    """quiz on installs a custom exc handler; quiz off restores the default."""
+    assert ip.custom_exceptions == ()
+    ip.run_line_magic("coach_quiz", "on")
+    assert ip.custom_exceptions != ()
+    ip.run_line_magic("coach_quiz", "off")
+    assert ip.custom_exceptions == ()
+
+
+def test_quiz_and_compact_share_handler(ip):
+    """With both on, turning one off keeps the handler while the other is on."""
+    ip.run_line_magic("coach_quiz", "on")
+    ip.run_line_magic("coach_compact", "on")
+    assert ip.custom_exceptions != ()
+    ip.run_line_magic("coach_quiz", "off")
+    assert ip.custom_exceptions != ()          # compact still on
+    ip.run_line_magic("coach_compact", "off")
+    assert ip.custom_exceptions == ()
 
 
 def test_unregister_with_compact_on_restores_handler(ip):

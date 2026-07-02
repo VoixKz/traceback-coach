@@ -6,7 +6,6 @@ into IPython and pushes HTML to the front-end.
 from __future__ import annotations
 
 import textwrap
-import time
 
 from IPython.core.magic import Magics, magics_class, cell_magic, line_magic
 from IPython.display import display, HTML
@@ -55,8 +54,6 @@ HELP = textwrap.dedent("""\
     The coach never shows the fix — it teaches you to read the error yourself.
 """)
 
-_DEBOUNCE_SECONDS = 3.0
-
 
 class _State:
     def __init__(self):
@@ -64,7 +61,6 @@ class _State:
         self.last_error = None      # (exc_type, exc_value, exc_tb, cell_source)
         self.pending_fix = False
         self._id = 0
-        self._last_analysis = 0.0
         self.stats = {}            # error_type -> count, this session
         self.level_override = "auto"
         self.quiz = False
@@ -74,13 +70,6 @@ class _State:
     def next_id(self) -> str:
         self._id += 1
         return f"tbc-diagram-{self._id}"
-
-    def should_analyze(self) -> bool:
-        now = time.monotonic()
-        if now - self._last_analysis >= _DEBOUNCE_SECONDS:
-            self._last_analysis = now
-            return True
-        return False
 
 
 _state = _State()
@@ -109,60 +98,75 @@ def _deepest_tb_line(tb) -> str:
     return line or "<source unavailable>"
 
 
-def _compact_exc(shell, etype, evalue, tb, tb_offset=None):
-    """Custom IPython exception handler that folds the native traceback.
+def _coach_exc(shell, etype, evalue, tb, tb_offset=None):
+    """Custom IPython exception renderer used while quiz and/or compact is on.
 
-    Renders the full traceback inside a collapsible <details> element instead of
-    dumping thousands of lines to stdout. Wraps its body in try/except so that any
-    internal error falls back to the normal traceback display.
+    Both modes fold the native traceback into a collapsible <details>. Quiz mode
+    additionally REDACTS the error type from the visible summary — the whole
+    point of the guessing game — revealing it only when the student expands the
+    block. Wraps its body in try/except so any internal error falls back to the
+    normal traceback display.
     """
     try:
         import html as _html
         import traceback as _tb
         n = _count_tb_frames(tb)
-        full = "".join(_tb.format_exception(etype, evalue, tb))
-        ename = getattr(etype, "__name__", str(etype))
-        # Truncate the RAW message first, then escape — escaping before
-        # truncating can slice an entity (e.g. "&amp;" -> "&am") and emit
-        # broken HTML in the summary line.
-        raw = str(evalue)
-        if len(raw) > 140:
-            raw = raw[:140] + "…"
-        msg = _html.escape(raw)
-        html = (
+        full = _html.escape("".join(_tb.format_exception(etype, evalue, tb)))
+        if _state.quiz:
+            # Never name the type here — the student must guess it first; it's
+            # revealed inside the (collapsed) body and in the Coach card.
+            summary = (
+                "🔴 An error was raised · <em>type hidden for the quiz</em> — "
+                f"click to expand the full traceback ({n} frames)"
+            )
+        else:  # compact only
+            ename = _html.escape(getattr(etype, "__name__", str(etype)))
+            # Truncate the RAW message first, then escape — escaping before
+            # truncating can slice an entity (e.g. "&amp;" -> "&am") and emit
+            # broken HTML in the summary line.
+            raw = str(evalue)
+            if len(raw) > 140:
+                raw = raw[:140] + "…"
+            msg = _html.escape(raw)
+            summary = (
+                f"▸ <strong>{ename}</strong>: {msg} "
+                f"&middot; full Python traceback ({n} frames) — click to expand"
+            )
+        display(HTML(
             "<details style=\"margin:4px 0\">"
-            "<summary style=\"cursor:pointer;color:#991b1b;font-family:monospace;font-size:13px\">"
-            f"▸ <strong>{_html.escape(ename)}</strong>: {msg} "
-            f"&middot; full Python traceback ({n} frames) — click to expand</summary>"
+            "<summary style=\"cursor:pointer;color:#991b1b;"
+            f"font-family:monospace;font-size:13px\">{summary}</summary>"
             "<pre style=\"background:#fef2f2;border-left:3px solid #ef4444;"
             "padding:8px;overflow:auto;font-size:12px;margin:4px 0\">"
-            f"{_html.escape(full)}</pre>"
+            f"{full}</pre>"
             "</details>"
-        )
-        display(HTML(html))
+        ))
     except Exception:  # Exception (not BaseException): never swallow Ctrl-C / SystemExit  # noqa: BLE001
         # Safety net: on any internal error fall back to the normal traceback
         shell.showtraceback()
 
 
-def _install_compact_handler(shell) -> None:
-    """Register the compact exc handler for the duration of compact mode."""
-    shell.set_custom_exc((BaseException,), _compact_exc)
-
-
-def _restore_default_handler(shell) -> None:
-    """Reset to IPython's default traceback rendering.
-
-    We deliberately reset to the default rather than trying to round-trip a
-    third-party handler: IPython's `shell.CustomTB` is an already-wrapped bound
-    method, so re-feeding it to `set_custom_exc` double-wraps and breaks it.
-    traceback-coach is the only `set_custom_exc` user here, so default is right.
+def _sync_exc_handler(shell) -> None:
+    """Install the coach exc renderer when quiz and/or compact is on; otherwise
+    restore IPython's default traceback rendering. traceback-coach is the only
+    `set_custom_exc` user here, so resetting to the default is safe.
     """
-    shell.set_custom_exc((), None)
+    if _state.quiz or _state.compact:
+        shell.set_custom_exc((BaseException,), _coach_exc)
+    else:
+        shell.set_custom_exc((), None)
 
 
 def _analyze_and_show(exc_type, exc_value, exc_tb, cell_source: str,
-                      tally: bool = True) -> None:
+                      tally: bool = True, force: bool = False) -> None:
+    # Dedup by exception identity: the SAME exception object can reach us twice
+    # (e.g. `%%coach` runs the cell, the post_run_cell hook fires for it, AND the
+    # magic explains it). Show it once. Distinct back-to-back errors are distinct
+    # objects, so they are never suppressed. `force` lets %coach_explain
+    # re-render the last error on demand.
+    if (not force and _state.last_error is not None
+            and exc_value is _state.last_error[1]):
+        return
     lang = _state.lang
     parsed = parse_traceback(exc_type, exc_value, exc_tb, cell_source)
     _state.last_error = (exc_type, exc_value, exc_tb, cell_source)
@@ -243,7 +247,7 @@ class CoachMagics(Magics):
         if _state.last_error is None:
             print("🧭  No error to explain yet. Run some code first.")
             return
-        _analyze_and_show(*_state.last_error, tally=False)
+        _analyze_and_show(*_state.last_error, tally=False, force=True)
 
     @line_magic
     def coach_lesson(self, line):
@@ -290,9 +294,11 @@ class CoachMagics(Magics):
         mode = line.strip().lower()
         if mode == "on":
             _state.quiz = True
-            print("🧭  Quiz mode on — guess the error type before revealing.")
+            _sync_exc_handler(self.shell)
+            print("🧭  Quiz mode on — guess the error type first; the traceback's type stays hidden until you expand it.")
         elif mode == "off":
             _state.quiz = False
+            _sync_exc_handler(self.shell)
             print("🧭  Quiz mode off.")
         else:
             print(f"🧭  Quiz mode: {'on' if _state.quiz else 'off'}  (use on/off)")
@@ -314,14 +320,12 @@ class CoachMagics(Magics):
     def coach_compact(self, line):
         mode = line.strip().lower()
         if mode == "on":
-            if not _state.compact:
-                _install_compact_handler(self.shell)
-                _state.compact = True
+            _state.compact = True
+            _sync_exc_handler(self.shell)
             print("🧭  Compact traceback: ON — Python tracebacks are collapsed (click to expand). The Coach card is untouched.")
         elif mode == "off":
-            if _state.compact:
-                _restore_default_handler(self.shell)
-                _state.compact = False
+            _state.compact = False
+            _sync_exc_handler(self.shell)
             print("🧭  Compact traceback: OFF — full tracebacks restored.")
         else:
             status = "on" if _state.compact else "off"
@@ -341,8 +345,6 @@ def _post_run_cell_hook(result):
         return
     exc = getattr(result, "error_in_exec", None) or getattr(result, "error_before_exec", None)
     if exc is not None:
-        if not _state.should_analyze():
-            return
         _analyze_and_show(type(exc), exc, exc.__traceback__, source)
     elif _state.pending_fix:
         _state.pending_fix = False
@@ -361,10 +363,11 @@ def unregister(ipython):
         ipython.events.unregister("post_run_cell", _post_run_cell_hook)
     except Exception:
         pass
-    # If compact mode is on, restore the default exc handler before unloading.
-    if _state.compact:
+    # If quiz/compact left a custom exc handler installed, restore the default.
+    if _state.quiz or _state.compact:
         try:
-            _restore_default_handler(ipython)
+            ipython.set_custom_exc((), None)
         except Exception:
             pass
+        _state.quiz = False
         _state.compact = False
