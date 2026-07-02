@@ -95,11 +95,12 @@ def test_wrap_quiz_html_prompts_and_hides_card():
     # interactive quiz: a dropdown of types, a Submit button, and the correct
     # answer are all present, wired by an inline script
     assert "<select" in out and "<option" in out
+    assert "<input" in out               # free-text field for other exception names
     assert "Submit" in out
     assert ">NameError<" in out          # the correct type is a selectable option
+    assert ">FileNotFoundError<" in out  # broad set of common exceptions offered
     assert "addEventListener" in out     # submit is wired
-    # the answer is embedded for the check, but only inside the script / options
-    assert "IndexError" in out           # distractor options are present too
+    assert "toLowerCase()" in out        # typed answers checked case-insensitively
 
 
 def test_wrap_quiz_html_answer_matches_error_type():
@@ -107,7 +108,17 @@ def test_wrap_quiz_html_answer_matches_error_type():
     out = wrap_quiz_html("<div>C</div>", "ZeroDivisionError", quiz_id="q9")
     # the embedded JS answer must be the actual error type
     assert 'var ans="ZeroDivisionError"' in out
-    assert 'id="q9-sel"' in out and 'id="q9-btn"' in out and 'id="q9-card"' in out
+    assert ('id="q9-sel"' in out and 'id="q9-btn"' in out
+            and 'id="q9-card"' in out and 'id="q9-txt"' in out)
+
+
+def test_wrap_quiz_html_rare_type_is_selectable_and_answerable():
+    """A rare error type (not in the common list) is still added as an option and
+    is the embedded answer, so it can be picked OR typed."""
+    from traceback_coach._core import wrap_quiz_html
+    out = wrap_quiz_html("<div>C</div>", "BrokenPipeError")
+    assert ">BrokenPipeError<" in out            # injected into the dropdown
+    assert 'var ans="BrokenPipeError"' in out    # and is the checked answer
 
 
 # ---------------------------------------------------------------------------

@@ -176,7 +176,7 @@ LABELS: dict[str, dict[str, str]] = {
         ),
         "reveal": "👁️ Reveal the Coach's analysis",
         "quiz_submit": "Submit",
-        "quiz_choose": "pick a type first",
+        "quiz_choose": "pick or type an error first",
         "quiz_correct": "Correct — it's a",
         "quiz_wrong": "Not quite — it was a",
         "fixed_it": (
@@ -200,7 +200,7 @@ LABELS: dict[str, dict[str, str]] = {
         ),
         "reveal": "👁️ 揭曉教練的分析",
         "quiz_submit": "提交",
-        "quiz_choose": "請先選一個類型",
+        "quiz_choose": "請先選擇或輸入一個錯誤類型",
         "quiz_correct": "答對了 — 這是",
         "quiz_wrong": "未中 — 其實是",
         "fixed_it": (

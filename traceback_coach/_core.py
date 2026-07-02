@@ -12,7 +12,7 @@ import traceback as _tb
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from .knowledge import ErrorFamily, lookup, FAMILIES
+from .knowledge import ErrorFamily, lookup
 
 
 @dataclass
@@ -708,37 +708,54 @@ def fade_level(seen_count: int, override: str = "auto") -> str:
     return "min"
 
 
+# A broad set of common Python exceptions for the quiz dropdown. Python has many
+# more, so the quiz also offers a free-text field — any exception name can be
+# typed there and is checked case-insensitively.
+_QUIZ_CHOICES = [
+    "NameError", "TypeError", "ValueError", "IndexError", "KeyError",
+    "AttributeError", "IndentationError", "SyntaxError", "ZeroDivisionError",
+    "ImportError", "ModuleNotFoundError", "RecursionError", "UnboundLocalError",
+    "FileNotFoundError", "PermissionError", "OSError", "AssertionError",
+    "StopIteration", "StopAsyncIteration", "RuntimeError", "NotImplementedError",
+    "OverflowError", "FloatingPointError", "ArithmeticError", "LookupError",
+    "MemoryError", "TabError", "UnicodeError", "UnicodeDecodeError",
+]
+
+
 def wrap_quiz_html(card_html: str, error_type: str = "", lang: str = "en",
                    quiz_id: str = "tbc-quiz") -> str:
     """Wrap a rendered card in an interactive active-recall quiz.
 
-    The student picks the error type from a dropdown and clicks Submit; the pick
-    is checked (correct / not) via a small inline script, and only then is the
-    Coach's analysis (diagram + full card) revealed. If the front-end strips the
-    script (untrusted output), the card is still reachable by clicking the
-    <details> summary — graceful degradation.
+    The student either PICKS the error type from a dropdown of common Python
+    exceptions OR TYPES any other exception name in the free-text field, then
+    clicks Submit. The guess is checked case-insensitively (✓ correct / ✗ with
+    the real answer) and only then is the Coach's analysis (diagram + full card)
+    revealed. Falls back to a plain click-to-reveal <details> if the front-end
+    strips the script (untrusted output) — graceful degradation.
     """
     from .i18n import LABELS
     lbl = LABELS[lang]
     esc = _html.escape
-    # Multiple-choice options: every covered family, plus the actual type if for
-    # some reason it isn't one of them, so the correct answer is always present.
-    opts = sorted(set(FAMILIES.keys()) | ({error_type} if error_type else set()))
+    # Dropdown = common exceptions ∪ the actual type (so the answer is always
+    # selectable); the text field covers everything else Python can raise.
+    opts = sorted(set(_QUIZ_CHOICES) | ({error_type} if error_type else set()))
     options_html = "".join(f"<option value=\"{esc(o)}\">{esc(o)}</option>" for o in opts)
     ans = _json.dumps(error_type)
     correct = _json.dumps(lbl["quiz_correct"])
     wrong = _json.dumps(lbl["quiz_wrong"])
     choose = _json.dumps(lbl["quiz_choose"])
-    sid, bid, fid, cid = (f"{quiz_id}-sel", f"{quiz_id}-btn",
-                          f"{quiz_id}-fb", f"{quiz_id}-card")
+    sid, bid, fid, cid, tid = (f"{quiz_id}-sel", f"{quiz_id}-btn", f"{quiz_id}-fb",
+                               f"{quiz_id}-card", f"{quiz_id}-txt")
+    fld = "padding:4px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:14px"
     prompt = (
         "<div style=\"background:#fef3c7;border-left:4px solid #f59e0b;"
         "border-radius:6px;padding:10px 14px;margin:8px 0;font-size:14px\">"
         f"{lbl['guess_first']}"
         "<div style=\"margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap\">"
-        f"<select id=\"{sid}\" style=\"padding:4px 8px;border:1px solid #d1d5db;"
-        "border-radius:4px;font-size:14px\">"
+        f"<select id=\"{sid}\" style=\"{fld}\">"
         f"<option value=\"\">— choose —</option>{options_html}</select>"
+        "<span style=\"color:#92400e\">or</span>"
+        f"<input id=\"{tid}\" type=\"text\" placeholder=\"type another…\" style=\"{fld};width:150px\">"
         f"<button id=\"{bid}\" type=\"button\" style=\"padding:5px 14px;background:#4338ca;"
         "color:#fff;border:0;border-radius:4px;cursor:pointer;font-size:14px\">"
         f"{esc(lbl['quiz_submit'])}</button>"
@@ -754,17 +771,19 @@ def wrap_quiz_html(card_html: str, error_type: str = "", lang: str = "en",
     script = (
         "<script>(function(){"
         "var s=document.getElementById('" + sid + "'),"
+        "t=document.getElementById('" + tid + "'),"
         "b=document.getElementById('" + bid + "'),"
         "f=document.getElementById('" + fid + "'),"
         "c=document.getElementById('" + cid + "');"
         "if(!s||!b||!c)return;"
         "var ans=" + ans + ";"
         "b.addEventListener('click',function(){"
-        "if(!s.value){f.textContent=' '+" + choose + ";f.style.color='#92400e';return;}"
-        "var ok=s.value===ans;"
+        "var g=((t&&t.value)||'').trim()||s.value;"
+        "if(!g){f.textContent=' '+" + choose + ";f.style.color='#92400e';return;}"
+        "var ok=g.toLowerCase()===ans.toLowerCase();"
         "f.innerHTML=ok?('✓ '+" + correct + "+' '+ans):('✗ '+" + wrong + "+' <b>'+ans+'</b>');"
         "f.style.color=ok?'#166534':'#991b1b';"
-        "c.open=true;s.disabled=true;b.disabled=true;});"
+        "c.open=true;s.disabled=true;b.disabled=true;if(t)t.disabled=true;});"
         "})();</script>"
     )
     return prompt + reveal + script

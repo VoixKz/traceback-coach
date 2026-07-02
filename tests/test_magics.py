@@ -332,6 +332,7 @@ def test_quiz_card_has_dropdown_submit_and_answer(ip):
     ip.run_cell("undefined_quiz_pick\n")   # NameError
     html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
     assert "<select" in html and "<option" in html   # dropdown of types
+    assert "<input" in html                            # free-text field for other types
     assert "Submit" in html                            # submit button
     assert "addEventListener" in html                  # checked client-side
     assert 'var ans="NameError"' in html               # correct answer embedded for the check
