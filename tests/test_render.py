@@ -88,10 +88,26 @@ def test_full_is_unchanged_default():
 
 def test_wrap_quiz_html_prompts_and_hides_card():
     from traceback_coach._core import wrap_quiz_html
-    out = wrap_quiz_html("<div>INNER_CARD</div>")
+    out = wrap_quiz_html("<div>INNER_CARD</div>", "NameError")
     assert "Guess first" in out
     assert "<details" in out and "Reveal" in out
-    assert "INNER_CARD" in out          # the real card is inside the details
+    assert "INNER_CARD" in out          # the real card is inside the details (hidden)
+    # interactive quiz: a dropdown of types, a Submit button, and the correct
+    # answer are all present, wired by an inline script
+    assert "<select" in out and "<option" in out
+    assert "Submit" in out
+    assert ">NameError<" in out          # the correct type is a selectable option
+    assert "addEventListener" in out     # submit is wired
+    # the answer is embedded for the check, but only inside the script / options
+    assert "IndexError" in out           # distractor options are present too
+
+
+def test_wrap_quiz_html_answer_matches_error_type():
+    from traceback_coach._core import wrap_quiz_html
+    out = wrap_quiz_html("<div>C</div>", "ZeroDivisionError", quiz_id="q9")
+    # the embedded JS answer must be the actual error type
+    assert 'var ans="ZeroDivisionError"' in out
+    assert 'id="q9-sel"' in out and 'id="q9-btn"' in out and 'id="q9-card"' in out
 
 
 # ---------------------------------------------------------------------------

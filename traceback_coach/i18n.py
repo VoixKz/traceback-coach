@@ -175,6 +175,10 @@ LABELS: dict[str, dict[str, str]] = {
             "this is (NameError? TypeError? IndexError? …)? Predict it, then reveal."
         ),
         "reveal": "👁️ Reveal the Coach's analysis",
+        "quiz_submit": "Submit",
+        "quiz_choose": "pick a type first",
+        "quiz_correct": "Correct — it's a",
+        "quiz_wrong": "Not quite — it was a",
         "fixed_it": (
             "✅ <strong>Fixed it!</strong> The cell that was failing now runs clean. "
             "What did you change, and why did it work?"
@@ -195,6 +199,10 @@ LABELS: dict[str, dict[str, str]] = {
             "（NameError？TypeError？IndexError？……）？先預測，再揭曉答案。"
         ),
         "reveal": "👁️ 揭曉教練的分析",
+        "quiz_submit": "提交",
+        "quiz_choose": "請先選一個類型",
+        "quiz_correct": "答對了 — 這是",
+        "quiz_wrong": "未中 — 其實是",
         "fixed_it": (
             "✅ <strong>修好了！</strong>之前出錯的儲存格現在可以正常執行了。"
             "你改了什麼？為什麼這樣修就能解決問題？"

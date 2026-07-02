@@ -177,7 +177,7 @@ def _analyze_and_show(exc_type, exc_value, exc_tb, cell_source: str,
     card = build_card(parsed, cell_source, llm=_LLM, lang=lang)
     html = render_card_html(card, diagram_id=_state.next_id(), level=level, lang=lang)
     if _state.quiz:
-        html = wrap_quiz_html(html, lang=lang)
+        html = wrap_quiz_html(html, parsed.error_type, lang=lang, quiz_id=_state.next_id())
     display(HTML(html))
     _state.pending_fix = True
 

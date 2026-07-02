@@ -323,6 +323,21 @@ def test_coach_quiz_hides_error_type_until_expand(ip):
     assert "NameError" in html                 # but present in the hidden body
 
 
+def test_quiz_card_has_dropdown_submit_and_answer(ip):
+    """With quiz + watch on, the card is wrapped with an interactive dropdown +
+    Submit that checks the guess before revealing the analysis."""
+    ip.run_line_magic("coach_watch", "on")
+    ip.run_line_magic("coach_quiz", "on")
+    ip._tbc_captured.clear()
+    ip.run_cell("undefined_quiz_pick\n")   # NameError
+    html = "".join(x for x in ip._tbc_captured if isinstance(x, str))
+    assert "<select" in html and "<option" in html   # dropdown of types
+    assert "Submit" in html                            # submit button
+    assert "addEventListener" in html                  # checked client-side
+    assert 'var ans="NameError"' in html               # correct answer embedded for the check
+    assert ">IndexError<" in html                      # distractors present
+
+
 def test_coach_quiz_syncs_exc_handler(ip):
     """quiz on installs a custom exc handler; quiz off restores the default."""
     assert ip.custom_exceptions == ()
