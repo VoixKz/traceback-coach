@@ -12,7 +12,7 @@ import traceback as _tb
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from .knowledge import ErrorFamily, lookup
+from .knowledge import ErrorFamily, lookup, FAMILIES
 
 
 @dataclass
@@ -708,20 +708,6 @@ def fade_level(seen_count: int, override: str = "auto") -> str:
     return "min"
 
 
-# A broad set of common Python exceptions for the quiz dropdown. Python has many
-# more, so the quiz also offers a free-text field — any exception name can be
-# typed there and is checked case-insensitively.
-_QUIZ_CHOICES = [
-    "NameError", "TypeError", "ValueError", "IndexError", "KeyError",
-    "AttributeError", "IndentationError", "SyntaxError", "ZeroDivisionError",
-    "ImportError", "ModuleNotFoundError", "RecursionError", "UnboundLocalError",
-    "FileNotFoundError", "PermissionError", "OSError", "AssertionError",
-    "StopIteration", "StopAsyncIteration", "RuntimeError", "NotImplementedError",
-    "OverflowError", "FloatingPointError", "ArithmeticError", "LookupError",
-    "MemoryError", "TabError", "UnicodeError", "UnicodeDecodeError",
-]
-
-
 def wrap_quiz_html(card_html: str, error_type: str = "", lang: str = "en",
                    quiz_id: str = "tbc-quiz") -> str:
     """Wrap a rendered card in an interactive active-recall quiz.
@@ -736,9 +722,10 @@ def wrap_quiz_html(card_html: str, error_type: str = "", lang: str = "en",
     from .i18n import LABELS
     lbl = LABELS[lang]
     esc = _html.escape
-    # Dropdown = common exceptions ∪ the actual type (so the answer is always
-    # selectable); the text field covers everything else Python can raise.
-    opts = sorted(set(_QUIZ_CHOICES) | ({error_type} if error_type else set()))
+    # Dropdown = only the basic/popular errors the coach covers ∪ the actual type
+    # (so the answer is always selectable); the free-text field covers everything
+    # else Python can raise (it has many more types).
+    opts = sorted(set(FAMILIES.keys()) | ({error_type} if error_type else set()))
     options_html = "".join(f"<option value=\"{esc(o)}\">{esc(o)}</option>" for o in opts)
     ans = _json.dumps(error_type)
     correct = _json.dumps(lbl["quiz_correct"])

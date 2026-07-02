@@ -98,7 +98,8 @@ def test_wrap_quiz_html_prompts_and_hides_card():
     assert "<input" in out               # free-text field for other exception names
     assert "Submit" in out
     assert ">NameError<" in out          # the correct type is a selectable option
-    assert ">FileNotFoundError<" in out  # broad set of common exceptions offered
+    assert ">IndexError<" in out         # other basic/popular types are offered
+    assert ">FileNotFoundError<" not in out  # dropdown trimmed to basics; rare types go in the text field
     assert "addEventListener" in out     # submit is wired
     assert "toLowerCase()" in out        # typed answers checked case-insensitively
 
