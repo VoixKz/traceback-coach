@@ -42,6 +42,12 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-}
+      # Provider key for the hermes-acp-sdk demos to drive a live Hermes agent.
+      # MUST be a $0-spend-limit OpenRouter key: it is readable by anyone with the
+      # lab password, and a $0 cap means it can only ever call FREE models.
+      # Hermes auto-detects OpenRouter from this var; the baked ~/.hermes/config.yaml
+      # pins a free model + free fallbacks.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     volumes:
       # Persist notebooks/work across rebuilds.
       - notebooks:/home/coach/work

@@ -63,11 +63,11 @@ WORKDIR /opt/app
 COPY --chown=${NB_UID}:${NB_GID} . /opt/app
 RUN pip install .
 
-# Also install hermes-acp-sdk so its demo notebooks (deploy/sdk-notebooks/) run
-# offline on the lab. We install ONLY the SDK + its [tools] extra — NOT
-# hermes-agent, and NO provider keys — so nothing here can spend money. The live
-# parts of 01_showcase are read from its saved output.
-RUN pip install "hermes-acp-sdk[tools]"
+# Also install hermes-acp-sdk (its demos) AND the hermes-agent it drives, so the
+# SDK notebooks run LIVE on the lab. Safety comes from the key, not from omission:
+# OPENROUTER_API_KEY (set from deploy/.env) MUST be a $0-spend-limit key, so even
+# though it is readable in the lab it can only ever call FREE models.
+RUN pip install "hermes-acp-sdk[tools]" "hermes-agent[acp]"
 
 # --- Runtime layout ---------------------------------------------------------
 # Working dir for notebooks (mounted as a named volume in compose) and the
@@ -79,9 +79,10 @@ ENV NB_HOME=/home/${NB_USER} \
 # Two clearly separated folders so the two packages' notebooks don't get mixed up:
 #   work/traceback-coach/  — the coach demo + CS1302 lessons
 #   work/hermes-acp-sdk/   — the SDK demos (00_start_here runs offline here)
-RUN mkdir -p ${NB_WORKDIR}/traceback-coach ${NB_WORKDIR}/hermes-acp-sdk /etc/jupyter \
+RUN mkdir -p ${NB_WORKDIR}/traceback-coach ${NB_WORKDIR}/hermes-acp-sdk ${NB_HOME}/.hermes /etc/jupyter \
     && cp /opt/app/*.ipynb ${NB_WORKDIR}/traceback-coach/ \
     && cp /opt/app/deploy/sdk-notebooks/*.ipynb ${NB_WORKDIR}/hermes-acp-sdk/ \
+    && cp /opt/app/deploy/hermes-config.yaml ${NB_HOME}/.hermes/config.yaml \
     && cp /opt/app/deploy/jupyter_server_config.py ${JUPYTER_CONFIG} \
     && chown -R ${NB_UID}:${NB_GID} ${NB_HOME} /etc/jupyter
 

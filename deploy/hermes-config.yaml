@@ -1,0 +1,19 @@
+# Baked into the lab image at /home/coach/.hermes/config.yaml.
+# Contains NO secrets — the OpenRouter key comes from the OPENROUTER_API_KEY env
+# var (set from deploy/.env), and MUST be a $0-spend-limit key so only FREE
+# models can ever be called.
+#
+# Primary is a free reasoning model; if it rate-limits (429), Hermes fails over
+# to the next free model in the chain. All routed through the same $0 key, so the
+# whole chain is free.
+model:
+  provider: openrouter
+  default: tencent/hy3:free
+providers: {}
+fallback_providers:
+  - provider: openrouter
+    model: nvidia/nemotron-3-super-120b-a12b:free
+  - provider: openrouter
+    model: poolside/laguna-m.1:free
+toolsets:
+  - hermes-acp
