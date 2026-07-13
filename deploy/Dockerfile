@@ -63,11 +63,16 @@ WORKDIR /opt/app
 COPY --chown=${NB_UID}:${NB_GID} . /opt/app
 RUN pip install .
 
-# Also install hermes-acp-sdk (its demos) AND the hermes-agent it drives, so the
-# SDK notebooks run LIVE on the lab. Safety comes from the key, not from omission:
-# OPENROUTER_API_KEY (set from deploy/.env) MUST be a $0-spend-limit key, so even
+# The hermes-agent the SDK drives (heavy; its own cached layer so an SDK bump
+# below doesn't reinstall it). The SDK notebooks run LIVE on the lab against it.
+RUN pip install "hermes-agent[acp]"
+
+# hermes-acp-sdk — pinned so the lab tracks a known-good release deterministically
+# (an unpinned build once resolved to a stale version mid-PyPI-propagation). Bump
+# this pin to ship a newer SDK. Safety comes from the key, not from omission:
+# OPENROUTER_API_KEY (from deploy/.env) MUST be a $0-spend-limit key, so even
 # though it is readable in the lab it can only ever call FREE models.
-RUN pip install "hermes-acp-sdk[tools]" "hermes-agent[acp]"
+RUN pip install "hermes-acp-sdk[tools]==0.1.1"
 
 # --- Runtime layout ---------------------------------------------------------
 # Working dir for notebooks (mounted as a named volume in compose) and the
