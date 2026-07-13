@@ -63,6 +63,12 @@ WORKDIR /opt/app
 COPY --chown=${NB_UID}:${NB_GID} . /opt/app
 RUN pip install .
 
+# Also install hermes-acp-sdk so its demo notebooks (deploy/sdk-notebooks/) run
+# offline on the lab. We install ONLY the SDK + its [tools] extra — NOT
+# hermes-agent, and NO provider keys — so nothing here can spend money. The live
+# parts of 01_showcase are read from its saved output.
+RUN pip install "hermes-acp-sdk[tools]"
+
 # --- Runtime layout ---------------------------------------------------------
 # Working dir for notebooks (mounted as a named volume in compose) and the
 # server config that compose/Dockerfile point Jupyter at.
@@ -70,8 +76,9 @@ ENV NB_HOME=/home/${NB_USER} \
     NB_WORKDIR=/home/${NB_USER}/work \
     JUPYTER_CONFIG=/etc/jupyter/jupyter_server_config.py
 
-RUN mkdir -p ${NB_WORKDIR} /etc/jupyter \
+RUN mkdir -p ${NB_WORKDIR} ${NB_WORKDIR}/hermes-acp-sdk /etc/jupyter \
     && cp /opt/app/*.ipynb ${NB_WORKDIR}/ \
+    && cp /opt/app/deploy/sdk-notebooks/*.ipynb ${NB_WORKDIR}/hermes-acp-sdk/ \
     && cp /opt/app/deploy/jupyter_server_config.py ${JUPYTER_CONFIG} \
     && chown -R ${NB_UID}:${NB_GID} ${NB_HOME} /etc/jupyter
 
