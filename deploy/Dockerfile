@@ -76,8 +76,11 @@ ENV NB_HOME=/home/${NB_USER} \
     NB_WORKDIR=/home/${NB_USER}/work \
     JUPYTER_CONFIG=/etc/jupyter/jupyter_server_config.py
 
-RUN mkdir -p ${NB_WORKDIR} ${NB_WORKDIR}/hermes-acp-sdk /etc/jupyter \
-    && cp /opt/app/*.ipynb ${NB_WORKDIR}/ \
+# Two clearly separated folders so the two packages' notebooks don't get mixed up:
+#   work/traceback-coach/  — the coach demo + CS1302 lessons
+#   work/hermes-acp-sdk/   — the SDK demos (00_start_here runs offline here)
+RUN mkdir -p ${NB_WORKDIR}/traceback-coach ${NB_WORKDIR}/hermes-acp-sdk /etc/jupyter \
+    && cp /opt/app/*.ipynb ${NB_WORKDIR}/traceback-coach/ \
     && cp /opt/app/deploy/sdk-notebooks/*.ipynb ${NB_WORKDIR}/hermes-acp-sdk/ \
     && cp /opt/app/deploy/jupyter_server_config.py ${JUPYTER_CONFIG} \
     && chown -R ${NB_UID}:${NB_GID} ${NB_HOME} /etc/jupyter
