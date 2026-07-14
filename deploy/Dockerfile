@@ -72,7 +72,7 @@ RUN pip install "hermes-agent[acp]"
 # this pin to ship a newer SDK. Safety comes from the key, not from omission:
 # OPENROUTER_API_KEY (from deploy/.env) MUST be a $0-spend-limit key, so even
 # though it is readable in the lab it can only ever call FREE models.
-RUN pip install "hermes-acp-sdk[tools]==0.1.1"
+RUN pip install "hermes-acp-sdk[tools]==0.2.0"
 
 # --- Runtime layout ---------------------------------------------------------
 # Working dir for notebooks (mounted as a named volume in compose) and the
