@@ -368,3 +368,63 @@ def test_unregister_with_compact_on_restores_handler(ip):
     assert ip.custom_exceptions == ()
     # Re-register so the ip fixture's own teardown doesn't crash
     traceback_coach.load_ipython_extension(ip)
+
+
+# ---------------------------------------------------------------------------
+# Task 5: Hermes-profile memory wired into the magics layer
+# ---------------------------------------------------------------------------
+
+import datetime
+
+import traceback_coach.magics as magics
+from traceback_coach.hermes_memory import HermesMemory
+
+
+class _FakeMem:
+    def __init__(self):
+        self.recorded = []
+        self.fixed = []
+        self._summary = {}
+
+    def available(self):
+        return True
+
+    def record(self, et, when):
+        self.recorded.append((et, when))
+        self._summary.setdefault(et, {"seen": 0, "fixed": 0, "last": when})
+        self._summary[et]["seen"] += 1
+
+    def record_fixed(self, et):
+        self.fixed.append(et)
+
+    def summary(self):
+        return self._summary
+
+    def reflect(self, lang="en"):
+        return "REFLECTION TEXT"
+
+
+def test_analyze_records_into_memory_when_on(monkeypatch):
+    fake = _FakeMem()
+    monkeypatch.setattr(magics._state, "memory", fake, raising=False)
+    monkeypatch.setattr(magics._state, "memory_on", True, raising=False)
+    monkeypatch.setattr(magics._state, "last_error", None, raising=False)
+    monkeypatch.setattr(magics, "display", lambda *a, **k: None)
+    try:
+        [][5]
+    except IndexError as e:
+        magics._analyze_and_show(type(e), e, e.__traceback__, "[][5]")
+    assert fake.recorded and fake.recorded[0][0] == "IndexError"
+
+
+def test_memory_off_does_not_record(monkeypatch):
+    fake = _FakeMem()
+    monkeypatch.setattr(magics._state, "memory", fake, raising=False)
+    monkeypatch.setattr(magics._state, "memory_on", False, raising=False)
+    monkeypatch.setattr(magics._state, "last_error", None, raising=False)
+    monkeypatch.setattr(magics, "display", lambda *a, **k: None)
+    try:
+        {}["x"]
+    except KeyError as e:
+        magics._analyze_and_show(type(e), e, e.__traceback__, '{}["x"]')
+    assert fake.recorded == []
