@@ -538,7 +538,8 @@ def llm_status() -> dict:
 
 
 def make_question(parsed: ParsedError, family: ErrorFamily,
-                  cell_source: str = "", llm=None, lang: str = "en") -> str:
+                  cell_source: str = "", llm=None, lang: str = "en",
+                  seen_count: int = 0) -> str:
     """LLM question if available, else the deterministic template."""
     fn = llm if llm is not None else llm_question
     try:
@@ -548,7 +549,13 @@ def make_question(parsed: ParsedError, family: ErrorFamily,
         question = ""
     if question:
         return question.strip()
-    return _fill(family.question_template, parsed)
+    q = _fill(family.question_template, parsed)
+    if seen_count >= 3:
+        from .i18n import LABELS
+        chronic = LABELS.get(lang, LABELS["en"]).get("chronic", "")
+        if chronic:
+            q = q + " " + chronic.replace("{error_type}", parsed.error_type).replace("{n}", str(seen_count))
+    return q
 
 
 import importlib.resources as _resources
@@ -572,7 +579,7 @@ class CardData:
 
 
 def build_card(parsed: ParsedError, cell_source: str = "", llm=None,
-               lang: str = "en") -> CardData:
+               lang: str = "en", seen_count: int = 0) -> CardData:
     from .i18n import FAMILIES_ZH
     if lang == "zh" and parsed.error_type in FAMILIES_ZH:
         family = FAMILIES_ZH[parsed.error_type]
@@ -591,7 +598,8 @@ def build_card(parsed: ParsedError, cell_source: str = "", llm=None,
         example_code=family.example_code,
         example_explanation=family.example_explanation,
         example_avoid=family.example_avoid,
-        question=make_question(parsed, family, cell_source, llm, lang),
+        question=make_question(parsed, family, cell_source, llm=llm, lang=lang,
+                               seen_count=seen_count),
     )
 
 
