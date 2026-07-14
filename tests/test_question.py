@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from traceback_coach._core import make_question, ParsedError, Frame
+from traceback_coach._core import make_question, parse_traceback, ParsedError, Frame
 from traceback_coach.knowledge import lookup
 
 
@@ -47,3 +47,26 @@ def test_make_question_does_not_double_call_on_internal_typeerror():
     q = make_question(_p(), lookup("NameError"), "print(total)\n", llm=boom)
     assert calls["n"] == 1          # called exactly once, no retry
     assert "total" in q             # fell back to the template
+
+
+def _parsed_index_error():
+    try:
+        [][5]
+    except IndexError as e:
+        return parse_traceback(type(e), e, e.__traceback__, "[][5]")
+
+
+def test_make_question_adds_chronic_line_when_repeated():
+    parsed = _parsed_index_error()
+    fam = lookup("IndexError")
+    q = make_question(parsed, fam, cell_source="[][5]", llm=lambda *a: "",
+                      seen_count=9)
+    assert "9" in q  # references how many times
+
+
+def test_make_question_no_chronic_line_below_threshold():
+    parsed = _parsed_index_error()
+    fam = lookup("IndexError")
+    q = make_question(parsed, fam, cell_source="[][5]", llm=lambda *a: "",
+                      seen_count=1)
+    assert "1 times" not in q and "9" not in q

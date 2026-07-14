@@ -30,6 +30,7 @@ dependencies = ["ipython>=8.0.0"]
 
 [project.optional-dependencies]
 dev = ["pytest", "jupyterlab"]
+hermes = ["hermes-acp-sdk>=0.2"]
 
 [project.urls]
 "Source Code" = "https://github.com/VoixKz/traceback-coach"

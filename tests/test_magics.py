@@ -368,3 +368,142 @@ def test_unregister_with_compact_on_restores_handler(ip):
     assert ip.custom_exceptions == ()
     # Re-register so the ip fixture's own teardown doesn't crash
     traceback_coach.load_ipython_extension(ip)
+
+
+# ---------------------------------------------------------------------------
+# Task 5: Hermes-profile memory wired into the magics layer
+# ---------------------------------------------------------------------------
+
+import datetime
+
+import traceback_coach.magics as magics
+from traceback_coach.hermes_memory import HermesMemory
+
+
+class _FakeMem:
+    def __init__(self):
+        self.recorded = []
+        self.fixed = []
+        self._summary = {}
+        self.forgotten = False
+
+    def available(self):
+        return True
+
+    def record(self, et, when):
+        self.recorded.append((et, when))
+        self._summary.setdefault(et, {"seen": 0, "fixed": 0, "last": when})
+        self._summary[et]["seen"] += 1
+
+    def record_fixed(self, et):
+        self.fixed.append(et)
+
+    def summary(self):
+        return self._summary
+
+    def reflect(self, lang="en"):
+        return "REFLECTION TEXT"
+
+    def forget(self):
+        self.forgotten = True
+
+
+def test_analyze_records_into_memory_when_on(monkeypatch):
+    fake = _FakeMem()
+    monkeypatch.setattr(magics._state, "memory", fake, raising=False)
+    monkeypatch.setattr(magics._state, "memory_on", True, raising=False)
+    monkeypatch.setattr(magics._state, "last_error", None, raising=False)
+    monkeypatch.setattr(magics, "display", lambda *a, **k: None)
+    try:
+        [][5]
+    except IndexError as e:
+        magics._analyze_and_show(type(e), e, e.__traceback__, "[][5]")
+    assert fake.recorded and fake.recorded[0][0] == "IndexError"
+
+
+def test_memory_off_does_not_record(monkeypatch):
+    fake = _FakeMem()
+    monkeypatch.setattr(magics._state, "memory", fake, raising=False)
+    monkeypatch.setattr(magics._state, "memory_on", False, raising=False)
+    monkeypatch.setattr(magics._state, "last_error", None, raising=False)
+    monkeypatch.setattr(magics, "display", lambda *a, **k: None)
+    try:
+        {}["x"]
+    except KeyError as e:
+        magics._analyze_and_show(type(e), e, e.__traceback__, '{}["x"]')
+    assert fake.recorded == []
+
+
+def test_chronic_line_absent_when_memory_off(monkeypatch):
+    """Regression test for Fix 1: with memory OFF (the default), the chronic
+    'you've hit X N times now' line must never appear, even after the same
+    error family repeats 3x in one session — this is pre-feature behaviour
+    and must stay identical.
+    """
+    monkeypatch.setattr(magics._state, "memory", None, raising=False)
+    monkeypatch.setattr(magics._state, "memory_on", False, raising=False)
+    monkeypatch.setattr(magics._state, "last_error", None, raising=False)
+    monkeypatch.setattr(magics._state, "stats", {}, raising=False)
+    captured = []
+    monkeypatch.setattr(magics, "display", lambda obj: captured.append(obj))
+    monkeypatch.setattr(magics, "HTML", lambda s: s)
+
+    html = ""
+    for _ in range(3):
+        captured.clear()
+        try:
+            [][5]
+        except IndexError as e:
+            magics._analyze_and_show(type(e), e, e.__traceback__, "[][5]")
+        html = "".join(x for x in captured if isinstance(x, str))
+    assert "times now" not in html
+
+
+class _FakeMemFixedSummary:
+    """Fake memory whose summary() is a fixed value, independent of record()
+    calls — lets the test pin the chronic count precisely."""
+
+    def __init__(self, summary):
+        self._summary = summary
+        self.recorded = []
+
+    def available(self):
+        return True
+
+    def record(self, et, when):
+        self.recorded.append((et, when))
+
+    def summary(self):
+        return self._summary
+
+
+def test_chronic_line_present_when_memory_on(monkeypatch):
+    """When memory is ON and reports a chronic count, the chronic line must
+    still appear — proves Fix 1 didn't disable the feature, only gated it.
+    """
+    fake = _FakeMemFixedSummary({"IndexError": {"seen": 9, "fixed": 0, "last": "2026-07-14"}})
+    monkeypatch.setattr(magics._state, "memory", fake, raising=False)
+    monkeypatch.setattr(magics._state, "memory_on", True, raising=False)
+    monkeypatch.setattr(magics._state, "last_error", None, raising=False)
+    monkeypatch.setattr(magics._state, "stats", {}, raising=False)
+    captured = []
+    monkeypatch.setattr(magics, "display", lambda obj: captured.append(obj))
+    monkeypatch.setattr(magics, "HTML", lambda s: s)
+
+    try:
+        [][5]
+    except IndexError as e:
+        magics._analyze_and_show(type(e), e, e.__traceback__, "[][5]")
+    html = "".join(x for x in captured if isinstance(x, str))
+    assert "9" in html
+    assert "times now" in html
+
+
+def test_coach_forget_works_when_memory_off(ip, monkeypatch):
+    """A user who turned memory off must still be able to erase previously
+    saved history — %coach_forget must not require memory_on."""
+    fake = _FakeMem()
+    monkeypatch.setattr(magics._state, "memory", fake, raising=False)
+    monkeypatch.setattr(magics._state, "memory_on", False, raising=False)
+    ip.run_line_magic("coach_forget", "")
+    assert fake.forgotten is True

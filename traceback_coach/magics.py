@@ -19,6 +19,12 @@ from .knowledge import lookup
 # Indirection points so tests can patch behaviour:
 _LLM = llm_question
 
+import datetime as _datetime
+
+
+def _today() -> str:
+    return _datetime.date.today().isoformat()
+
 BANNER = textwrap.dedent("""\
     🧭  traceback-coach loaded!
     ────────────────────────────
@@ -32,6 +38,9 @@ BANNER = textwrap.dedent("""\
     •  %coach_quiz on   guess the error type before the answer (active recall)
     •  %coach_lang en|zh  set explanation language (default: en)
     •  %coach_compact on  collapse the Python traceback (click to expand)
+    •  %coach_memory on|off|status  remember your error weaknesses across sessions (needs the [hermes] extra)
+    •  %coach_insights   a Socratic review of your recurring weaknesses
+    •  %coach_forget     erase your saved error history
     •  %coach_help      show help
 """)
 
@@ -49,6 +58,9 @@ HELP = textwrap.dedent("""\
     %coach_quiz on    guess the error type before the answer (active recall)
     %coach_lang en|zh  set explanation language (default: en; status to check)
     %coach_compact on  collapse the Python traceback (click to expand) (on/off/status)
+    %coach_memory on|off|status  remember your error weaknesses across sessions (needs the [hermes] extra)
+    %coach_insights   a Socratic review of your recurring weaknesses
+    %coach_forget     erase your saved error history
     %coach_help       This help
 
     The coach never shows the fix — it teaches you to read the error yourself.
@@ -66,6 +78,8 @@ class _State:
         self.quiz = False
         self.lang = "en"
         self.compact = False       # opt-in compact traceback mode (Task B)
+        self.memory = None        # HermesMemory | None
+        self.memory_on = False    # recording into the profile store
 
     def next_id(self) -> str:
         self._id += 1
@@ -172,9 +186,20 @@ def _analyze_and_show(exc_type, exc_value, exc_tb, cell_source: str,
     _state.last_error = (exc_type, exc_value, exc_tb, cell_source)
     if tally:  # re-explaining the same error must not inflate the stats/fade
         _state.stats[parsed.error_type] = _state.stats.get(parsed.error_type, 0) + 1
-    count = _state.stats.get(parsed.error_type, 1)
-    level = fade_level(count, _state.level_override)
-    card = build_card(parsed, cell_source, llm=_LLM, lang=lang)
+        if _state.memory_on and _state.memory is not None:
+            try:
+                _state.memory.record(parsed.error_type, _today())
+            except Exception:
+                pass  # memory must never break the coach
+    seen = _state.stats.get(parsed.error_type, 1)
+    if _state.memory_on and _state.memory is not None:
+        try:
+            seen = _state.memory.summary().get(parsed.error_type, {}).get("seen", seen)
+        except Exception:
+            pass
+    level = fade_level(seen, _state.level_override)
+    card = build_card(parsed, cell_source, llm=_LLM, lang=lang,
+                      seen_count=(seen if _state.memory_on else 0))
     html = render_card_html(card, diagram_id=_state.next_id(), level=level, lang=lang)
     if _state.quiz:
         html = wrap_quiz_html(html, parsed.error_type, lang=lang, quiz_id=_state.next_id())
@@ -332,6 +357,59 @@ class CoachMagics(Magics):
             print(f"🧭  Compact traceback: {status}  (use on/off to change)")
 
     @line_magic
+    def coach_memory(self, line):
+        arg = line.strip().lower()
+        if _state.memory is None:
+            try:
+                from .hermes_memory import HermesMemory
+                _state.memory = HermesMemory()
+            except Exception:
+                _state.memory = None
+                print("🧭  Memory unavailable.")
+                return
+        if arg == "on":
+            if _state.memory.available():
+                _state.memory_on = True
+                print("🧭  Memory on — I'll remember your error weaknesses across sessions.")
+            else:
+                _state.memory_on = False
+                print("🧭  Memory needs `pip install traceback-coach[hermes]` and a Hermes profile. Staying off.")
+        elif arg == "off":
+            _state.memory_on = False
+            print("🧭  Memory off (nothing recorded).")
+        else:
+            state = "on" if _state.memory_on else "off"
+            avail = "yes" if _state.memory.available() else "no (needs [hermes] + Hermes)"
+            print(f"🧭  Memory: {state}  ·  available: {avail}")
+
+    @line_magic
+    def coach_insights(self, line):
+        if not (_state.memory_on and _state.memory is not None):
+            print("🧭  Turn memory on first: %coach_memory on")
+            return
+        try:
+            text = _state.memory.reflect(lang=_state.lang)
+        except Exception as exc:
+            print(f"🧭  Couldn't reach the agent for a review ({exc}). Your history is still saved.")
+            return
+        display(HTML(
+            "<div style='background:#eef2ff;border-left:4px solid #6366f1;"
+            "padding:10px 14px;margin:8px 0;border-radius:4px;font-size:14px;"
+            f"white-space:pre-wrap'>{text}</div>"
+        ))
+
+    @line_magic
+    def coach_forget(self, line):
+        if _state.memory is None:
+            print("🧭  Memory is off — nothing to forget.")
+            return
+        try:
+            _state.memory.forget()
+            print("🧭  Forgot your saved error history.")
+        except Exception as exc:
+            print(f"🧭  Couldn't clear history ({exc}).")
+
+    @line_magic
     def coach_help(self, line):
         print(HELP)
 
@@ -348,14 +426,30 @@ def _post_run_cell_hook(result):
         _analyze_and_show(type(exc), exc, exc.__traceback__, source)
     elif _state.pending_fix:
         _state.pending_fix = False
+        if (_state.memory_on and _state.memory is not None
+                and _state.last_error is not None):
+            try:
+                _state.memory.record_fixed(_state.last_error[0].__name__)
+            except Exception:
+                pass
         _show_fixed(lang=_state.lang)
 
 
 def register(ipython):
     ipython.register_magics(CoachMagics)
     ipython.events.register("post_run_cell", _post_run_cell_hook)
+    try:
+        from .hermes_memory import HermesMemory
+        _state.memory = HermesMemory()
+        _state.memory_on = _state.memory.available()
+    except Exception:
+        _state.memory = None
+        _state.memory_on = False
     inject_mermaid_runtime()
     print(BANNER)
+    if _state.memory_on:
+        print("🧠  Memory on — remembering your error weaknesses across sessions "
+              "(family names + counts only). Turn off anytime: %coach_memory off")
 
 
 def unregister(ipython):

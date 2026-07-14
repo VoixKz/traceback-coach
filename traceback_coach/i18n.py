@@ -183,6 +183,7 @@ LABELS: dict[str, dict[str, str]] = {
             "✅ <strong>Fixed it!</strong> The cell that was failing now runs clean. "
             "What did you change, and why did it work?"
         ),
+        "chronic": "You've hit {error_type} {n} times now — what's your rule for avoiding it?",
     },
     "zh": {
         "coach": "🧭 教練",
@@ -207,5 +208,6 @@ LABELS: dict[str, dict[str, str]] = {
             "✅ <strong>修好了！</strong>之前出錯的儲存格現在可以正常執行了。"
             "你改了什麼？為什麼這樣修就能解決問題？"
         ),
+        "chronic": "你已經遇到 {error_type} {n} 次了——你避免它的規則是什麼？",
     },
 }
