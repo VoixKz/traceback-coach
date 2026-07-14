@@ -507,3 +507,20 @@ def test_coach_forget_works_when_memory_off(ip, monkeypatch):
     monkeypatch.setattr(magics._state, "memory_on", False, raising=False)
     ip.run_line_magic("coach_forget", "")
     assert fake.forgotten is True
+
+
+def test_review_html_renders_bold_and_paragraphs():
+    """The insights review arrives as light Markdown; it must render, not show
+    literal ** asterisks."""
+    out = magics._review_html(
+        "Your weakness is **IndexError**.\n\nWhat is the last valid index?"
+    )
+    assert "<strong>IndexError</strong>" in out
+    assert "**" not in out
+    assert out.count("<p") == 2  # blank line -> two paragraphs
+
+
+def test_review_html_escapes_raw_html():
+    out = magics._review_html("check <list> length & bounds")
+    assert "&lt;list&gt;" in out
+    assert "&amp;" in out

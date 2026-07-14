@@ -20,10 +20,21 @@ from .knowledge import lookup
 _LLM = llm_question
 
 import datetime as _datetime
+import html as _html
+import re as _re
 
 
 def _today() -> str:
     return _datetime.date.today().isoformat()
+
+
+def _review_html(text: str) -> str:
+    """Render the light Markdown the agent's review uses (**bold** + blank-line
+    paragraphs) into safe, styled HTML for the insights card."""
+    esc = _html.escape(text.strip())
+    esc = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", esc)
+    paras = [p.replace("\n", "<br>") for p in _re.split(r"\n\s*\n", esc) if p.strip()]
+    return "".join(f"<p style='margin:0 0 10px'>{p}</p>" for p in paras) or "&nbsp;"
 
 BANNER = textwrap.dedent("""\
     🧭  traceback-coach loaded!
@@ -395,7 +406,7 @@ class CoachMagics(Magics):
         display(HTML(
             "<div style='background:#eef2ff;border-left:4px solid #6366f1;"
             "padding:10px 14px;margin:8px 0;border-radius:4px;font-size:14px;"
-            f"white-space:pre-wrap'>{text}</div>"
+            "line-height:1.5'>" + _review_html(text) + "</div>"
         ))
 
     @line_magic

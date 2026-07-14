@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-14
+
+### Fixed
+- `%coach_insights` now renders the agent's light Markdown (bold and paragraphs)
+  in the review card instead of showing literal `**` asterisks.
+
 ## [0.5.0] - 2026-07-14
 
 ### Added
@@ -80,7 +86,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Beginner Python lesson notebooks (names/types, lists/dicts,
   functions/recursion, values/math).
 
-[Unreleased]: https://github.com/VoixKz/traceback-coach/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/VoixKz/traceback-coach/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/VoixKz/traceback-coach/releases/tag/v0.5.1
 [0.5.0]: https://github.com/VoixKz/traceback-coach/releases/tag/v0.5.0
 [0.4.2]: https://github.com/VoixKz/traceback-coach/releases/tag/v0.4.2
 [0.4.1]: https://github.com/VoixKz/traceback-coach/releases/tag/v0.4.1
