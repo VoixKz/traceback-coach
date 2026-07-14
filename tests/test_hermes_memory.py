@@ -58,3 +58,34 @@ def test_forget_deletes_the_file(mem, tmp_path):
     mem.forget()
     assert mem.summary() == {}
     assert not (tmp_path / "traceback_coach_history.md").exists()
+
+
+def test_available_false_when_sdk_missing(monkeypatch):
+    import builtins
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "hermes_acp_sdk" or name.startswith("hermes_acp_sdk."):
+            raise ImportError("no sdk")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    assert HermesMemory().available() is False
+
+
+def test_profile_store_path_uses_profile_home(monkeypatch, tmp_path):
+    # Stub the SDK's ProfileManager so no real Hermes is needed.
+    class FakePM:
+        def __init__(self, *a, **k):
+            pass
+
+        def ensure_profile(self, name, clone_provider=False):
+            return None
+
+        def get_env(self, name):
+            return {"HERMES_HOME": str(tmp_path / "profiles" / "app-traceback-coach")}
+
+    import traceback_coach.hermes_memory as hm
+    monkeypatch.setattr(hm, "_load_profile_manager", lambda command: FakePM())
+    p = HermesMemory()._profile_store_path()
+    assert p == tmp_path / "profiles" / "app-traceback-coach" / "traceback_coach_history.md"

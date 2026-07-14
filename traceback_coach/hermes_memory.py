@@ -13,6 +13,7 @@ code, variable names, tracebacks, or messages.
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
 
 _PROFILE = "traceback-coach"
@@ -26,6 +27,16 @@ _HEADER = (
 _LINE_RE = re.compile(
     r"^- (?P<fam>\w+): seen (?P<seen>\d+), fixed (?P<fixed>\d+), last (?P<last>\S+)\s*$"
 )
+
+
+def _load_profile_manager(command: str | None):
+    """Import the SDK's ProfileManager lazily. Raises ImportError if absent."""
+    from hermes_acp_sdk import ProfileManager  # optional dependency
+
+    return ProfileManager(
+        hermes_path=command or "hermes",
+        auto_prefix=True,  # -> profile "app-traceback-coach"
+    )
 
 
 class HermesMemory:
@@ -42,6 +53,19 @@ class HermesMemory:
         self._command = command
         self._store_path = Path(store_path) if store_path else None
 
+    def available(self) -> bool:
+        """True iff the SDK imports and a `hermes` binary can be found."""
+        try:
+            import hermes_acp_sdk  # noqa: F401
+        except Exception:
+            return False
+        return bool(self._command or shutil.which("hermes"))
+
+    def ensure_profile(self) -> None:
+        """Create the coach's profile (cloning the host provider) if needed."""
+        mgr = _load_profile_manager(self._command)
+        mgr.ensure_profile(self._profile, clone_provider=True)
+
     # ── store: pure file I/O, no Hermes needed ───────────────────────────
     def _resolve_store_path(self) -> Path:
         if self._store_path is None:
@@ -49,8 +73,10 @@ class HermesMemory:
         return self._store_path
 
     def _profile_store_path(self) -> Path:
-        # Implemented in Task 2 (resolve the profile home via the SDK).
-        raise NotImplementedError
+        mgr = _load_profile_manager(self._command)
+        mgr.ensure_profile(self._profile, clone_provider=True)
+        home = mgr.get_env(self._profile)["HERMES_HOME"]
+        return Path(home) / _STORE_NAME
 
     def _read(self) -> dict[str, dict]:
         path = self._resolve_store_path()
