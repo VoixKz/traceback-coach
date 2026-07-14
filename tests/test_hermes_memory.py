@@ -89,3 +89,29 @@ def test_profile_store_path_uses_profile_home(monkeypatch, tmp_path):
     monkeypatch.setattr(hm, "_load_profile_manager", lambda command: FakePM())
     p = HermesMemory()._profile_store_path()
     assert p == tmp_path / "profiles" / "app-traceback-coach" / "traceback_coach_history.md"
+
+
+def test_reflect_prompts_agent_with_history_and_returns_text(monkeypatch, tmp_path):
+    mem = HermesMemory(store_path=str(tmp_path / "traceback_coach_history.md"))
+    mem.record("IndexError", "2026-07-14")
+
+    captured = {}
+
+    async def fake_drive(prompt, profile, command):
+        captured["prompt"] = prompt
+        captured["profile"] = profile
+        return "Focus on off-by-one indexing. What is the last valid index?"
+
+    import traceback_coach.hermes_memory as hm
+    monkeypatch.setattr(hm, "_drive_agent", fake_drive)
+
+    out = mem.reflect(lang="en")
+    assert "IndexError" in captured["prompt"]        # history reached the agent
+    assert captured["profile"] == "traceback-coach"
+    assert "off-by-one" in out
+
+
+def test_reflect_empty_history_skips_agent(tmp_path):
+    mem = HermesMemory(store_path=str(tmp_path / "traceback_coach_history.md"))
+    out = mem.reflect(lang="en")
+    assert "history" in out.lower()  # a friendly "no history yet" message

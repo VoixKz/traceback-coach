@@ -12,8 +12,10 @@ code, variable names, tracebacks, or messages.
 """
 from __future__ import annotations
 
+import asyncio
 import re
 import shutil
+import threading
 from pathlib import Path
 
 _PROFILE = "traceback-coach"
@@ -37,6 +39,44 @@ def _load_profile_manager(command: str | None):
         hermes_path=command or "hermes",
         auto_prefix=True,  # -> profile "app-traceback-coach"
     )
+
+
+async def _drive_agent(prompt: str, profile: str, command: str | None) -> str:
+    """Open a Hermes session in `profile` and return the agent's text answer."""
+    from hermes_acp_sdk import HermesClient, AgentText
+
+    kwargs = {"profile": profile, "clone_provider": True, "auto_prefix": True}
+    if command:
+        kwargs["command"] = command
+    async with HermesClient(**kwargs) as hermes:
+        async with hermes.session() as session:
+            chunks: list[str] = []
+            async for event in session.prompt(prompt):
+                if isinstance(event, AgentText):
+                    chunks.append(event.text)
+            return "".join(chunks).strip()
+
+
+def _run_async(coro) -> str:
+    """Run `coro` to completion even when a Jupyter event loop is already
+    running: execute it on a dedicated thread with its own loop and block."""
+    result: dict[str, object] = {}
+
+    def runner():
+        loop = asyncio.new_event_loop()
+        try:
+            result["value"] = loop.run_until_complete(coro)
+        except Exception as exc:  # surface the failure to the caller
+            result["error"] = exc
+        finally:
+            loop.close()
+
+    t = threading.Thread(target=runner)
+    t.start()
+    t.join()
+    if "error" in result:
+        raise result["error"]  # type: ignore[misc]
+    return result["value"]  # type: ignore[return-value]
 
 
 class HermesMemory:
@@ -127,6 +167,31 @@ class HermesMemory:
             return None
         fam = max(stats, key=lambda k: stats[k]["seen"])
         return (fam, stats[fam]["seen"])
+
+    def _build_reflect_prompt(self, lang: str) -> str:
+        stats = self._read()
+        lines = [
+            f"- {fam}: seen {s['seen']} times, fixed {s['fixed']}"
+            for fam, s in sorted(stats.items(), key=lambda kv: -kv[1]["seen"])
+        ]
+        history = "\n".join(lines)
+        reply_lang = "Traditional Chinese" if lang == "zh" else "English"
+        return (
+            "You are a Socratic Python coach. Here is a learner's error history "
+            "(most frequent first):\n"
+            f"{history}\n\n"
+            "In 3-4 sentences, name their biggest weakness and ask ONE guiding "
+            "question that helps them self-correct next time. Do NOT give the fix "
+            f"or any code. Reply in {reply_lang}."
+        )
+
+    def reflect(self, lang: str = "en") -> str:
+        """On-demand agentic weakness review. Uses the provider (once)."""
+        if not self._read():
+            return ("Not enough error history yet — keep coding and the coach "
+                    "will learn where you struggle.")
+        prompt = self._build_reflect_prompt(lang)
+        return _run_async(_drive_agent(prompt, self._profile, self._command))
 
     def forget(self) -> None:
         path = self._resolve_store_path()
