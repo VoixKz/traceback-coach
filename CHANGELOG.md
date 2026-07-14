@@ -7,8 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-14
+
 ### Added
+- **Cross-session memory (optional, `traceback-coach[hermes]`).** The coach can now
+  remember which Python errors you keep struggling with — across kernel restarts —
+  backed by an isolated Hermes profile. `%coach_memory on|off|status` toggles it.
+  Only error-family names, counts, and dates are stored; never your code.
+- **`%coach_insights`** — an on-demand Socratic review of your recurring weaknesses,
+  written by the Hermes agent (the one place a provider is ever used).
+- **`%coach_forget`** — erase your saved error history.
+- Progressive fade and the guiding question now personalize from your cross-session
+  history when memory is on (e.g. "you've hit IndexError 9 times now — what's your rule?").
+- `04_memory_tour.ipynb` — a demo of the memory engine (runs fully offline).
 - This changelog.
+
+### Notes
+- Memory is a strictly additive, **optional** backend: with `hermes-acp-sdk` absent
+  (the default), the coach behaves exactly as before — no memory, no provider calls.
+- The `%coach_insights` review requires Hermes ≥ 0.18 (for `hermes acp` + profile cloning).
 
 ## [0.4.2] - 2026-07-02
 
@@ -63,7 +80,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Beginner Python lesson notebooks (names/types, lists/dicts,
   functions/recursion, values/math).
 
-[Unreleased]: https://github.com/VoixKz/traceback-coach/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/VoixKz/traceback-coach/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/VoixKz/traceback-coach/releases/tag/v0.5.0
 [0.4.2]: https://github.com/VoixKz/traceback-coach/releases/tag/v0.4.2
 [0.4.1]: https://github.com/VoixKz/traceback-coach/releases/tag/v0.4.1
 [0.4.0]: https://github.com/VoixKz/traceback-coach/releases/tag/v0.4.0
