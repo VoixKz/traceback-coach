@@ -38,6 +38,9 @@ BANNER = textwrap.dedent("""\
     •  %coach_quiz on   guess the error type before the answer (active recall)
     •  %coach_lang en|zh  set explanation language (default: en)
     •  %coach_compact on  collapse the Python traceback (click to expand)
+    •  %coach_memory on|off|status  remember your error weaknesses across sessions (needs the [hermes] extra)
+    •  %coach_insights   a Socratic review of your recurring weaknesses
+    •  %coach_forget     erase your saved error history
     •  %coach_help      show help
 """)
 
@@ -55,6 +58,9 @@ HELP = textwrap.dedent("""\
     %coach_quiz on    guess the error type before the answer (active recall)
     %coach_lang en|zh  set explanation language (default: en; status to check)
     %coach_compact on  collapse the Python traceback (click to expand) (on/off/status)
+    %coach_memory on|off|status  remember your error weaknesses across sessions (needs the [hermes] extra)
+    %coach_insights   a Socratic review of your recurring weaknesses
+    %coach_forget     erase your saved error history
     %coach_help       This help
 
     The coach never shows the fix — it teaches you to read the error yourself.
@@ -394,7 +400,7 @@ class CoachMagics(Magics):
 
     @line_magic
     def coach_forget(self, line):
-        if _state.memory is None or not _state.memory_on:
+        if _state.memory is None:
             print("🧭  Memory is off — nothing to forget.")
             return
         try:
@@ -441,6 +447,9 @@ def register(ipython):
         _state.memory_on = False
     inject_mermaid_runtime()
     print(BANNER)
+    if _state.memory_on:
+        print("🧠  Memory on — remembering your error weaknesses across sessions "
+              "(family names + counts only). Turn off anytime: %coach_memory off")
 
 
 def unregister(ipython):

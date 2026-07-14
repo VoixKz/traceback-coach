@@ -20,7 +20,6 @@ from pathlib import Path
 
 _PROFILE = "traceback-coach"
 _STORE_NAME = "traceback_coach_history.md"
-_CHRONIC_THRESHOLD = 3
 
 _HEADER = (
     "# Python error history (maintained by traceback-coach)\n\n"
@@ -64,11 +63,16 @@ def _run_async(coro) -> str:
 
     def runner():
         loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         try:
             result["value"] = loop.run_until_complete(coro)
         except Exception as exc:  # surface the failure to the caller
             result["error"] = exc
         finally:
+            try:
+                loop.run_until_complete(loop.shutdown_asyncgens())
+            except Exception:
+                pass  # shutdown must never mask the real result/error
             loop.close()
 
     t = threading.Thread(target=runner)

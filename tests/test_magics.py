@@ -385,6 +385,7 @@ class _FakeMem:
         self.recorded = []
         self.fixed = []
         self._summary = {}
+        self.forgotten = False
 
     def available(self):
         return True
@@ -402,6 +403,9 @@ class _FakeMem:
 
     def reflect(self, lang="en"):
         return "REFLECTION TEXT"
+
+    def forget(self):
+        self.forgotten = True
 
 
 def test_analyze_records_into_memory_when_on(monkeypatch):
@@ -493,3 +497,13 @@ def test_chronic_line_present_when_memory_on(monkeypatch):
     html = "".join(x for x in captured if isinstance(x, str))
     assert "9" in html
     assert "times now" in html
+
+
+def test_coach_forget_works_when_memory_off(ip, monkeypatch):
+    """A user who turned memory off must still be able to erase previously
+    saved history — %coach_forget must not require memory_on."""
+    fake = _FakeMem()
+    monkeypatch.setattr(magics._state, "memory", fake, raising=False)
+    monkeypatch.setattr(magics._state, "memory_on", False, raising=False)
+    ip.run_line_magic("coach_forget", "")
+    assert fake.forgotten is True
