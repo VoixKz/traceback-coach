@@ -192,7 +192,8 @@ def _analyze_and_show(exc_type, exc_value, exc_tb, cell_source: str,
         except Exception:
             pass
     level = fade_level(seen, _state.level_override)
-    card = build_card(parsed, cell_source, llm=_LLM, lang=lang, seen_count=seen)
+    card = build_card(parsed, cell_source, llm=_LLM, lang=lang,
+                      seen_count=(seen if _state.memory_on else 0))
     html = render_card_html(card, diagram_id=_state.next_id(), level=level, lang=lang)
     if _state.quiz:
         html = wrap_quiz_html(html, parsed.error_type, lang=lang, quiz_id=_state.next_id())
@@ -353,8 +354,13 @@ class CoachMagics(Magics):
     def coach_memory(self, line):
         arg = line.strip().lower()
         if _state.memory is None:
-            from .hermes_memory import HermesMemory
-            _state.memory = HermesMemory()
+            try:
+                from .hermes_memory import HermesMemory
+                _state.memory = HermesMemory()
+            except Exception:
+                _state.memory = None
+                print("🧭  Memory unavailable.")
+                return
         if arg == "on":
             if _state.memory.available():
                 _state.memory_on = True
@@ -426,9 +432,13 @@ def _post_run_cell_hook(result):
 def register(ipython):
     ipython.register_magics(CoachMagics)
     ipython.events.register("post_run_cell", _post_run_cell_hook)
-    from .hermes_memory import HermesMemory
-    _state.memory = HermesMemory()
-    _state.memory_on = _state.memory.available()
+    try:
+        from .hermes_memory import HermesMemory
+        _state.memory = HermesMemory()
+        _state.memory_on = _state.memory.available()
+    except Exception:
+        _state.memory = None
+        _state.memory_on = False
     inject_mermaid_runtime()
     print(BANNER)
 
